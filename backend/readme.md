@@ -18,5 +18,5 @@ python main.py
 
 Leia também:
 
-- `../README.md`
+- `../readme.md`
 - `../agents.md`

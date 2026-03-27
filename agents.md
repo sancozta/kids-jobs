@@ -97,6 +97,6 @@ kids-jobs/
 
 - Preserve o isolamento do projeto novo; não reutilize serviços do HUNT por conveniência
 - Se adicionar scraper novo, ele deve ser da vertical `jobs`
-- Se mudar contrato ou fluxo local, atualize este `agents.md` e o `README.md`
+- Se mudar contrato ou fluxo local, atualize este `agents.md` e o `readme.md`
 - Quando usar `playwright-cli` para validar interface, abra em modo `headed` e redimensione a janela para tela ampla antes de inspecionar ou capturar screenshots
 - Padrão recomendado para este workspace: `open <url> --headed` seguido de `resize 1728 1117`

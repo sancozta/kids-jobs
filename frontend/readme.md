@@ -18,5 +18,5 @@ npm run dev
 
 Leia também:
 
-- `../README.md`
+- `../readme.md`
 - `../agents.md`
