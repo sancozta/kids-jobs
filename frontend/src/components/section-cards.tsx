@@ -1,0 +1,137 @@
+import { Activity, BriefcaseBusiness, Database, Download } from "lucide-react";
+
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+
+interface SectionCardsProps {
+  stats: {
+    totalJobs: number;
+    jobsExtractedToday: number;
+    activeSources: number;
+    totalSources: number;
+  };
+  health: {
+    backend: "online" | "offline";
+    scraping: "online" | "offline";
+  };
+  loading: boolean;
+}
+
+function StatusIndicator({ label, value }: { label: string; value: "online" | "offline" }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="text-muted-foreground uppercase tracking-widest font-bold">{label}</span>
+        <span className={cn("font-mono", value === "online" ? "text-emerald-500" : "text-rose-500")}>
+          {value === "online" ? "UP" : "DOWN"}
+        </span>
+      </div>
+      <div className="h-[2px] w-full overflow-hidden rounded-full bg-border">
+        <div className={cn("h-full w-full", value === "online" ? "bg-emerald-500" : "bg-rose-500")} />
+      </div>
+    </div>
+  );
+}
+
+export function SectionCards({ stats, health, loading }: SectionCardsProps) {
+  const healthyServices = [health.backend, health.scraping].filter((service) => service === "online").length;
+
+  return (
+    <div className="*:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4 grid grid-cols-1 gap-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card">
+      <Card className="@container/card">
+        <CardHeader className="flex flex-row items-center justify-between pb-1 space-y-0">
+          <CardDescription className="text-sm font-medium">Total de vagas</CardDescription>
+          <Badge variant="outline" className="flex gap-1 rounded-lg text-[10px] px-1.5 font-mono">
+            <BriefcaseBusiness className="size-3" />
+            JOBS
+          </Badge>
+        </CardHeader>
+        <CardContent className="pb-3">
+          {loading ? (
+            <Skeleton className="h-8 w-32" />
+          ) : (
+            <div className="text-3xl font-bold tracking-tight">{stats.totalJobs.toLocaleString("pt-BR")}</div>
+          )}
+          <div className="mt-3 space-y-1">
+            <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              Acervo local persistido no monólito
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="@container/card">
+        <CardHeader className="flex flex-row items-center justify-between pb-1 space-y-0">
+          <CardDescription className="text-sm font-medium">Extraídas hoje</CardDescription>
+          <Badge variant="outline" className="flex gap-1 rounded-lg px-1.5 text-[10px] font-mono">
+            <Download className="size-3" />
+            24H
+          </Badge>
+        </CardHeader>
+        <CardContent className="pb-3">
+          {loading ? (
+            <Skeleton className="h-8 w-32" />
+          ) : (
+            <div className="text-3xl font-bold tracking-tight">{stats.jobsExtractedToday.toLocaleString("pt-BR")}</div>
+          )}
+          <div className="mt-3 space-y-1">
+            <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              Volume agregado a partir do histórico de execução
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="@container/card">
+        <CardHeader className="flex flex-row items-center justify-between pb-1 space-y-0">
+          <CardDescription className="text-sm font-medium">Fontes ativas</CardDescription>
+          <Badge variant="outline" className="flex gap-1 rounded-lg text-[10px] px-1.5 font-mono">
+            <Database className="size-3" />
+            {loading ? "..." : `${stats.activeSources}/${stats.totalSources}`}
+          </Badge>
+        </CardHeader>
+        <CardContent className="pb-3">
+          {loading ? (
+            <Skeleton className="h-8 w-32" />
+          ) : (
+            <div className="text-3xl font-bold tracking-tight">{stats.activeSources.toLocaleString("pt-BR")}</div>
+          )}
+          <div className="mt-3 space-y-1">
+            <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              Rotinas habilitadas para scraping agendado
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="@container/card">
+        <CardHeader className="flex flex-row items-center justify-between pb-1 space-y-0">
+          <CardDescription className="text-sm font-medium">Saúde local</CardDescription>
+          <div className="flex gap-1.5">
+            <div
+              className={`size-2 rounded-full ${health.backend === "online" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]"}`}
+            />
+            <div
+              className={`size-2 rounded-full ${health.scraping === "online" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]"}`}
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="pb-3">
+          <div className="mb-3 flex items-end justify-between">
+            <div className="text-3xl font-bold tracking-tight">{loading ? "..." : `${healthyServices}/2`}</div>
+            <Badge variant="outline" className="flex gap-1 rounded-lg px-1.5 text-[10px] font-mono">
+              <Activity className="size-3" />
+              STACK
+            </Badge>
+          </div>
+          <div className="mt-1 flex flex-col gap-2">
+            <StatusIndicator label="Backend" value={health.backend} />
+            <StatusIndicator label="Scraping" value={health.scraping} />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,519 @@
+openapi: 3.0.3
+info:
+  title: Kids Jobs Backend API
+  description: |
+    API standalone do kids-jobs para vagas, fontes, scrapings
+    e operacao local.
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:8001
+    description: Local development
+
+tags:
+  - name: health
+    description: Health check
+  - name: scrapers
+    description: Controle de scrapers e configuracao
+  - name: sources
+    description: Listagem de Agendamentos Scraping
+  - name: source-executions
+    description: Historico recente de execucoes de sources
+  - name: categories
+    description: Categorias de scraping por fonte (com hierarquia)
+
+paths:
+  # --- Health ---------------------------------------------------------------
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: kids-jobs-backend }
+
+  # --- Scrapers -------------------------------------------------------------
+  /api/v1/scrapers/config:
+    get:
+      tags: [scrapers]
+      summary: Get full scraping config tree
+      operationId: getFullConfig
+      description: |
+        Returns Sources -> Categories tree.
+        Used by the scheduler to build scraping jobs.
+      parameters:
+        - name: enabled_only
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Scraping config tree
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SourceConfig" }
+
+  /api/v1/scrapers/status:
+    get:
+      tags: [scrapers]
+      summary: Get scraper status
+      operationId: getScraperStatus
+      responses:
+        "200":
+          description: Current scraper status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: idle }
+                  message: { type: string }
+
+  /api/v1/scrapers/run-all:
+    post:
+      tags: [scrapers]
+      summary: Queue manual execution for all enabled scrapers
+      operationId: runAllScrapers
+      responses:
+        "202":
+          description: Batch execution queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScraperRunQueuedResponse" }
+        "400":
+          description: No enabled source available
+
+  /api/v1/scrapers/{source_id}/run:
+    post:
+      tags: [scrapers]
+      summary: Queue manual scraper execution for a source
+      operationId: runScraper
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Scraper execution queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScraperRunQueuedResponse" }
+        "400":
+          description: Source is disabled
+        "404":
+          description: Source not found
+        "503":
+          description: Manual executor unavailable
+
+  # --- Sources --------------------------------------------------------------
+  /api/v1/sources:
+    get:
+      tags: [sources]
+      summary: List all sources
+      operationId: listSources
+      parameters:
+        - name: enabled_only
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Source list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Source" }
+    post:
+      tags: [sources]
+      summary: Create source
+      operationId: createSource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SourceCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Source" }
+        "409":
+          description: Conflict (duplicate name)
+
+  /api/v1/sources/{source_id}:
+    get:
+      tags: [sources]
+      summary: Get source by ID
+      operationId: getSource
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Source details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Source" }
+        "404":
+          description: Not found
+    put:
+      tags: [sources]
+      summary: Update source
+      operationId: updateSource
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SourceUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Source" }
+        "404":
+          description: Not found
+    delete:
+      tags: [sources]
+      summary: Delete source
+      operationId: deleteSource
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /api/v1/sources/{source_id}/toggle:
+    patch:
+      tags: [sources]
+      summary: Toggle source enabled/disabled
+      operationId: toggleSource
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Toggled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Source" }
+        "404":
+          description: Not found
+
+  /api/v1/sources/{source_id}/analysis:
+    patch:
+      tags: [sources]
+      summary: Update source analysis
+      operationId: updateSourceAnalysis
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SourceAnalysisUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Source" }
+        "404":
+          description: Not found
+
+  /api/v1/source-executions:
+    get:
+      tags: [source-executions]
+      summary: List source execution history
+      operationId: listSourceExecutions
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [24h, 7d, 30d, 90d]
+            default: 30d
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 5000
+      responses:
+        "200":
+          description: Recent source execution history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SourceExecutionHistory" }
+
+  # --- Categories -----------------------------------------------------------
+  /api/v1/sources/{source_id}/categories:
+    get:
+      tags: [categories]
+      summary: List categories by source
+      operationId: listCategories
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: enabled_only
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Category list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Category" }
+        "404":
+          description: Source not found
+    post:
+      tags: [categories]
+      summary: Create category for source
+      operationId: createCategory
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+        "404":
+          description: Source not found
+
+  /api/v1/categories/{category_id}:
+    get:
+      tags: [categories]
+      summary: Get category by ID
+      operationId: getCategory
+      parameters:
+        - name: category_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Category details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+        "404":
+          description: Not found
+    put:
+      tags: [categories]
+      summary: Update category
+      operationId: updateCategory
+      parameters:
+        - name: category_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+        "404":
+          description: Not found
+    delete:
+      tags: [categories]
+      summary: Delete category
+      operationId: deleteCategory
+      parameters:
+        - name: category_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+components:
+  schemas:
+    ScraperRunQueuedResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        status: { type: string, example: queued }
+        queued_count: { type: integer }
+        submitted_at: { type: string, format: date-time }
+        source_id: { type: integer, nullable: true }
+        source_name: { type: string, nullable: true }
+
+    SourceConfig:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        enabled: { type: boolean }
+        scraper_base_url: { type: string }
+        scraper_type: { type: string }
+        scraper_schedule: { type: string }
+        analysis: { type: string }
+        description: { type: string }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/CategoryConfig" }
+
+    CategoryConfig:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        scrape_path: { type: string }
+        category_id: { type: integer, nullable: true }
+        schedule: { type: string }
+        enabled: { type: boolean }
+
+    Source:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        enabled: { type: boolean }
+        scraper_base_url: { type: string }
+        scraper_type: { type: string }
+        scraper_schedule: { type: string }
+        extra_config: { type: object, additionalProperties: true }
+        analysis: { type: string }
+        description: { type: string }
+        last_extraction_status: { type: string, nullable: true, example: SUCCESS }
+        last_extraction_http_status: { type: integer, nullable: true, example: 200 }
+        last_extraction_message: { type: string, nullable: true }
+        last_extraction_at: { type: string, format: date-time, nullable: true }
+        next_scheduled_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    SourceCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        enabled: { type: boolean, default: true }
+        scraper_base_url: { type: string }
+        scraper_type: { type: string, default: http }
+        scraper_schedule: { type: string, default: "0 */2 * * *" }
+        extra_config: { type: object, additionalProperties: true }
+        analysis: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+
+    SourceUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        enabled: { type: boolean }
+        scraper_base_url: { type: string }
+        scraper_type: { type: string }
+        scraper_schedule: { type: string }
+        extra_config: { type: object, additionalProperties: true }
+        analysis: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+
+    SourceExecutionHistory:
+      type: object
+      properties:
+        id: { type: integer }
+        source_id: { type: integer }
+        source_name: { type: string }
+        trigger: { type: string, example: scheduled }
+        status: { type: string, example: SUCCESS }
+        success: { type: boolean }
+        scraped_count: { type: integer }
+        published_count: { type: integer }
+        duration_ms: { type: integer }
+        strategy: { type: string, example: http_antibot }
+        http_status_code: { type: integer, nullable: true }
+        error_message: { type: string, nullable: true }
+        message: { type: string, nullable: true }
+        executed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+
+    SourceAnalysisUpdate:
+      type: object
+      required: [analysis]
+      properties:
+        analysis: { type: string }
+
+    Category:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        source_id: { type: integer }
+        category_id: { type: integer, nullable: true }
+        scrape_path: { type: string }
+        schedule: { type: string }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CategoryCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        scrape_path: { type: string }
+        category_id: { type: integer }
+        schedule: { type: string }
+        enabled: { type: boolean, default: true }
+
+    CategoryUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        scrape_path: { type: string }
+        category_id: { type: integer }
+        schedule: { type: string }
+        enabled: { type: boolean }

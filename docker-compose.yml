@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: kids-jobs-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: sqlite:////app/storage/kids-jobs.db
+      FRONTEND_APP_URL: http://frontend:3000
+    ports:
+      - "8001:8001"
+    volumes:
+      - kids_jobs_storage:/app/storage
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001
+        NEXT_PUBLIC_SCRAPING_API_URL: http://localhost:8001
+    container_name: kids-jobs-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  kids_jobs_storage:
