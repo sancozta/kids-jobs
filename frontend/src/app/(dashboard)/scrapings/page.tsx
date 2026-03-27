@@ -5,8 +5,6 @@ import axios from "axios";
 import {
   ChevronLeft,
   ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   FileText,
   Lock,
   LockOpen,
@@ -60,15 +58,7 @@ interface SourceBase {
   updated_at: string | null;
 }
 
-interface SourceCategory {
-  id: number;
-  name: string;
-  enabled: boolean;
-}
-
-interface Source extends SourceBase {
-  category_name: string | null;
-}
+type Source = SourceBase;
 
 interface SourceForm {
   name: string;
@@ -77,7 +67,6 @@ interface SourceForm {
   scraper_type: string;
   scraper_schedule: string;
   analysis: string;
-  category_name: string;
 }
 
 type RowAction = "run" | "toggle" | "delete";
@@ -104,7 +93,6 @@ const DEFAULT_FORM: SourceForm = {
   scraper_type: "http_antibot",
   scraper_schedule: "0 */6 * * *",
   analysis: "",
-  category_name: "",
 };
 
 function getApiErrorMessage(error: unknown, fallbackMessage: string): string {
@@ -159,7 +147,6 @@ export default function SourcesPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(DEFAULT_PAGE_SIZE);
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchFilter, setSearchFilter] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -168,7 +155,6 @@ export default function SourcesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<SourceForm>(DEFAULT_FORM);
   const [rowLoading, setRowLoading] = useState<{ id: number; action: RowAction } | null>(null);
-  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [analysisSourceId, setAnalysisSourceId] = useState<number | null>(null);
   const [analysisSourceName, setAnalysisSourceName] = useState("");
@@ -176,56 +162,25 @@ export default function SourcesPage() {
   const [isSavingAnalysis, setIsSavingAnalysis] = useState(false);
   const [isAnalysisEditable, setIsAnalysisEditable] = useState(false);
   const [isRunningAll, setIsRunningAll] = useState(false);
-  const [isBulkDisablingCategory, setIsBulkDisablingCategory] = useState(false);
-
-  const fetchPrimaryCategory = useCallback(async (sourceId: number): Promise<SourceCategory | null> => {
-    try {
-      const res = await scrapingApi.get(`/api/v1/sources/${sourceId}/categories`, {
-        params: { enabled_only: false },
-      });
-      const categories = Array.isArray(res.data) ? (res.data as SourceCategory[]) : [];
-      if (categories.length === 0) {
-        return null;
-      }
-      return categories.sort((a, b) => a.id - b.id)[0];
-    } catch {
-      return null;
-    }
-  }, []);
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
     try {
       const res = await scrapingApi.get("/api/v1/sources");
       const parsed = Array.isArray(res.data) ? (res.data as SourceBase[]) : [];
-      const sourcesWithCategory: Source[] = await Promise.all(
-        parsed.map(async (source) => {
-          const category = await fetchPrimaryCategory(source.id);
-          return {
-            ...source,
-            analysis: typeof source.analysis === "string" ? source.analysis : source.description ?? "",
-            category_name: category?.name ?? null,
-          };
-        })
-      );
-      const sortedSources = sourcesWithCategory.sort((a, b) => b.id - a.id);
+      const sortedSources = parsed
+        .map((source) => ({
+          ...source,
+          analysis: typeof source.analysis === "string" ? source.analysis : source.description ?? "",
+        }))
+        .sort((a, b) => b.id - a.id);
       setSources(sortedSources);
-      setCategoryOptions(
-        Array.from(
-          new Set(
-            sortedSources
-              .map((source) => source.category_name?.trim())
-              .filter((name): name is string => Boolean(name))
-          )
-        ).sort((a, b) => a.localeCompare(b, "pt-BR"))
-      );
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Erro ao carregar scrapings"));
-      setCategoryOptions([]);
     } finally {
       setLoading(false);
     }
-  }, [fetchPrimaryCategory]);
+  }, []);
 
   useEffect(() => {
     fetchSources();
@@ -233,18 +188,13 @@ export default function SourcesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [perPage, categoryFilter, statusFilter, searchFilter]);
+  }, [perPage, statusFilter, searchFilter]);
 
   const normalizedSearchFilter = searchFilter.trim().toLowerCase();
-
-  const categoryFilterOptions = Array.from(
-    new Set(sources.map((source) => source.category_name?.trim()).filter((value): value is string => Boolean(value)))
-  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const filteredSources = sources.filter((source) => {
     const searchable = [
       source.name,
-      source.category_name ?? "",
       source.scraper_type,
       source.scraper_base_url,
       source.scraper_schedule,
@@ -254,12 +204,11 @@ export default function SourcesPage() {
       .join(" ")
       .toLowerCase();
     const matchesSearch = !normalizedSearchFilter || searchable.includes(normalizedSearchFilter);
-    const matchesCategory = categoryFilter === "all" || (source.category_name ?? "") === categoryFilter;
     const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "active" && source.enabled) ||
       (statusFilter === "inactive" && !source.enabled);
-    return matchesSearch && matchesCategory && matchesStatus;
+    return matchesSearch && matchesStatus;
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredSources.length / perPage));
@@ -291,38 +240,8 @@ export default function SourcesPage() {
       scraper_type: source.scraper_type || "http_antibot",
       scraper_schedule: source.scraper_schedule || "0 */6 * * *",
       analysis: source.analysis ?? source.description ?? "",
-      category_name: source.category_name ?? "",
     });
     setIsDialogOpen(true);
-  };
-
-  const syncSourceCategory = async (sourceId: number, categoryName: string) => {
-    const normalizedCategory = categoryName.trim();
-    const res = await scrapingApi.get(`/api/v1/sources/${sourceId}/categories`, {
-      params: { enabled_only: false },
-    });
-    const existing = Array.isArray(res.data) ? (res.data as SourceCategory[]).sort((a, b) => a.id - b.id) : [];
-    const primary = existing[0];
-
-    if (!normalizedCategory) {
-      if (primary) {
-        await scrapingApi.delete(`/api/v1/categories/${primary.id}`);
-      }
-      return;
-    }
-
-    if (primary) {
-      await scrapingApi.put(`/api/v1/categories/${primary.id}`, {
-        name: normalizedCategory,
-        enabled: true,
-      });
-      return;
-    }
-
-    await scrapingApi.post(`/api/v1/sources/${sourceId}/categories`, {
-      name: normalizedCategory,
-      enabled: true,
-    });
   };
 
   const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -349,23 +268,12 @@ export default function SourcesPage() {
 
     setIsSaving(true);
     try {
-      let sourceId = editingId;
-
       if (isEditing && editingId != null) {
         await scrapingApi.put(`/api/v1/sources/${editingId}`, payload);
         toast.success("Scraping atualizado com sucesso");
       } else {
-        const created = await scrapingApi.post("/api/v1/sources", payload);
-        sourceId = created.data?.id ?? null;
+        await scrapingApi.post("/api/v1/sources", payload);
         toast.success("Scraping criado com sucesso");
-      }
-
-      if (sourceId != null) {
-        try {
-          await syncSourceCategory(sourceId, form.category_name);
-        } catch (error) {
-          toast.warning(getApiErrorMessage(error, "Scraping salvo, mas não foi possível atualizar a categoria"));
-        }
       }
 
       setIsDialogOpen(false);
@@ -423,70 +331,6 @@ export default function SourcesPage() {
       toast.error(getApiErrorMessage(error, "Erro ao alterar status do scraping"));
     } finally {
       setRowLoading(null);
-    }
-  };
-
-  const disableCategorySources = async () => {
-    if (categoryFilter === "all") {
-      return;
-    }
-
-    const targets = sources.filter((source) => (source.category_name ?? "") === categoryFilter && source.enabled);
-
-    if (targets.length === 0) {
-      toast.info(`Nenhum scraping ativo encontrado em ${categoryFilter}`);
-      return;
-    }
-
-    if (!confirm(`Deseja desativar ${targets.length} scraping(s) da categoria "${categoryFilter}"?`)) {
-      return;
-    }
-
-    setIsBulkDisablingCategory(true);
-    try {
-      const results = await Promise.allSettled(
-        targets.map((source) =>
-          scrapingApi.put(`/api/v1/sources/${source.id}`, {
-            name: source.name.trim().toLowerCase(),
-            enabled: false,
-            scraper_base_url: source.scraper_base_url?.trim() ?? "",
-            scraper_type: source.scraper_type,
-            scraper_schedule: source.scraper_schedule?.trim() ?? "",
-            analysis: (source.analysis ?? source.description ?? "").trim(),
-          })
-        )
-      );
-
-      const disabledIds = new Set<number>();
-      let failedCount = 0;
-
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          disabledIds.add(targets[index].id);
-          return;
-        }
-        failedCount += 1;
-      });
-
-      if (disabledIds.size > 0) {
-        setSources((prev) => prev.map((item) => (disabledIds.has(item.id) ? { ...item, enabled: false } : item)));
-      }
-
-      if (failedCount === 0) {
-        toast.success(`${disabledIds.size} scraping(s) da categoria ${categoryFilter} foram desativados`);
-        return;
-      }
-
-      if (disabledIds.size === 0) {
-        toast.error(`Não foi possível desativar os scrapings da categoria ${categoryFilter}`);
-        return;
-      }
-
-      toast.warning(
-        `${disabledIds.size} scraping(s) da categoria ${categoryFilter} foram desativados, mas ${failedCount} falharam`
-      );
-    } finally {
-      setIsBulkDisablingCategory(false);
     }
   };
 
@@ -552,33 +396,18 @@ export default function SourcesPage() {
 
   const isRowBusy = (sourceId: number) => rowLoading?.id === sourceId;
   const hasEnabledSources = sources.some((source) => source.enabled);
-  const enabledSourcesInSelectedCategory =
-    categoryFilter === "all"
-      ? 0
-      : sources.filter((source) => (source.category_name ?? "") === categoryFilter && source.enabled).length;
-  const categorySuggestions = Array.from(
-    new Set([...categoryOptions, ...(form.category_name ? [form.category_name] : [])])
-  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 pt-6 lg:p-6 lg:pt-8 w-full">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Scrapings</h1>
-          <p className="text-sm text-muted-foreground">Gerencie scrapings, execução manual e estratégia</p>
+          <p className="text-sm text-muted-foreground">Gerencie fontes, execução manual e estratégia de extração</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={runAllScrapers} disabled={isRunningAll || loading || !hasEnabledSources}>
             {isRunningAll ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Play className="mr-2 size-4" />}
             Rodar Todos
-          </Button>
-          <Button
-            variant="outline"
-            onClick={disableCategorySources}
-            disabled={loading || isBulkDisablingCategory || categoryFilter === "all" || enabledSourcesInSelectedCategory === 0}
-          >
-            {isBulkDisablingCategory ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Power className="mr-2 size-4" />}
-            Desativar Categoria
           </Button>
           <Button onClick={openCreateDialog}>
             <Plus className="mr-2 size-4" />
@@ -593,25 +422,9 @@ export default function SourcesPage() {
           <Input
             value={searchFilter}
             onChange={(event) => setSearchFilter(event.target.value)}
-            placeholder="Pesquisar scraping..."
+            placeholder="Pesquisar fonte..."
             className="h-9 pl-9 shadow-xs"
           />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="h-9 w-[220px] shadow-xs">
-              <SelectValue placeholder="Categoria" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {categoryFilterOptions.map((category) => (
-                <SelectItem key={category} value={category}>
-                  {category}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         <div className="flex items-center gap-2">
@@ -626,6 +439,44 @@ export default function SourcesPage() {
             </SelectContent>
           </Select>
         </div>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Select value={String(perPage)} onValueChange={(value) => setPerPage(Number(value))}>
+            <SelectTrigger className="h-9 w-[88px] shadow-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              disabled={currentPage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-9 min-w-14 px-3 tabular-nums" disabled>
+              {currentPage} / {totalPages}
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
       </div>
 
       <Card className="shadow-xs bg-gradient-to-t from-primary/2 to-card dark:bg-card">
@@ -635,7 +486,6 @@ export default function SourcesPage() {
               <TableRow>
                 <TableHead className="w-[80px]">ID</TableHead>
                 <TableHead>Nome</TableHead>
-                <TableHead className="w-[160px]">Categoria</TableHead>
                 <TableHead className="w-[160px]">Tipo</TableHead>
                 <TableHead>Base URL</TableHead>
                 <TableHead className="w-[160px]">Agendamento</TableHead>
@@ -650,7 +500,7 @@ export default function SourcesPage() {
               {loading
                 ? [...Array(5)].map((_, i) => (
                     <TableRow key={i}>
-                      {[...Array(11)].map((_, j) => (
+                      {[...Array(10)].map((_, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-4 w-full" />
                         </TableCell>
@@ -661,7 +511,6 @@ export default function SourcesPage() {
                     <TableRow key={source.id}>
                       <TableCell className="font-mono text-xs">{source.id}</TableCell>
                       <TableCell className="font-medium">{source.name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{source.category_name || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{source.scraper_type}</TableCell>
                       <TableCell className="max-w-[260px] truncate text-sm text-muted-foreground">
                         {source.scraper_base_url ? (
@@ -798,7 +647,7 @@ export default function SourcesPage() {
                   ))}
               {!loading && paginatedSources.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-24 text-center">
+                  <TableCell colSpan={10} className="h-24 text-center">
                     Nenhum scraping encontrado.
                   </TableCell>
                 </TableRow>
@@ -807,61 +656,6 @@ export default function SourcesPage() {
           </Table>
         </CardContent>
       </Card>
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            Página {currentPage} de {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Itens por página</span>
-            <Select value={String(perPage)} onValueChange={(value) => setPerPage(Number(value))}>
-              <SelectTrigger className="h-8 w-[88px] shadow-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="outline" size="icon" className="size-8" disabled={currentPage <= 1} onClick={() => setPage(1)}>
-            <ChevronsLeft className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-8"
-            disabled={currentPage <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-8"
-            disabled={currentPage >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-8"
-            disabled={currentPage >= totalPages}
-            onClick={() => setPage(totalPages)}
-          >
-            <ChevronsRight className="size-4" />
-          </Button>
-        </div>
-      </div>
 
       <Dialog
         open={isDialogOpen}
@@ -873,16 +667,16 @@ export default function SourcesPage() {
       >
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>{isEditing ? "Editar scraping" : "Novo scraping"}</DialogTitle>
+            <DialogTitle>{isEditing ? "Editar fonte" : "Nova fonte"}</DialogTitle>
             <DialogDescription>
-              Configure nome, categoria, última análise, estratégia de execução, URL base e agendamento cron.
+              Configure nome, última análise, estratégia de execução, URL base e agendamento cron.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="source-name">Nome do scraper</Label>
+                <Label htmlFor="source-name">Nome da fonte</Label>
                 <Input
                   id="source-name"
                   value={form.name}
@@ -907,23 +701,6 @@ export default function SourcesPage() {
                   rows={3}
                   className="flex min-h-[84px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="source-category">Categoria</Label>
-                <Input
-                  id="source-category"
-                  list="source-category-options"
-                  value={form.category_name}
-                  onChange={(event) => setForm((prev) => ({ ...prev, category_name: event.target.value }))}
-                  placeholder="Ex: VEICULOS"
-                  disabled={isSaving}
-                />
-                <datalist id="source-category-options">
-                  {categorySuggestions.map((option) => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
               </div>
 
               <div className="space-y-2">

@@ -10,7 +10,6 @@ class MarketResponseSchema(BaseModel):
     """Market response schema"""
     id: int = Field(..., description="ID unico da oportunidade")
     source_id: Optional[int] = Field(None, description="ID da fonte")
-    category_id: Optional[int] = Field(None, description="ID da categoria")
     url: Optional[str] = Field(None, description="URL da oportunidade")
     title: Optional[str] = Field(None, description="Titulo da oportunidade")
     description: Optional[str] = Field(None, description="Descricao detalhada")
@@ -49,7 +48,6 @@ class MarketResponseSchema(BaseModel):
 class MarketCreateSchema(BaseModel):
     """Market creation schema"""
     source_id: Optional[int] = Field(None, description="ID da fonte")
-    category_id: Optional[int] = Field(None, description="ID da categoria")
     url: Optional[str] = Field(None, description="URL unica")
     title: Optional[str] = Field(None, description="Titulo")
     description: Optional[str] = Field(None, description="Descricao")
@@ -73,7 +71,6 @@ class MarketCreateSchema(BaseModel):
 class MarketUpdateSchema(BaseModel):
     """Market update schema"""
     source_id: Optional[int] = None
-    category_id: Optional[int] = None
     url: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
@@ -101,7 +98,6 @@ class MarketPatchSchema(BaseModel):
     submitted_at: Optional[datetime] = Field(None, description="Data/hora em que a analise foi solicitada")
 
     source_id: Optional[int] = None
-    category_id: Optional[int] = None
     url: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None

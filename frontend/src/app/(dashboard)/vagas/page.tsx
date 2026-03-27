@@ -92,30 +92,19 @@ interface MarketItem {
   documents?: string[];
   links?: string[];
   attributes?: Record<string, unknown> | null;
-  category_id: number | null;
   version: number | null;
   created_at: string | null;
   updated_at: string | null;
 }
 
-interface CategoryOption {
-  id: number;
-  name: string;
-}
-
 interface SourceOption {
   id: number;
   name: string;
-  category_name: string | null;
 }
 
 interface ScraperConfigSource {
   id: number;
   name: string;
-  categories?: Array<{
-    id: number;
-    name: string;
-  }>;
 }
 
 interface RescrapeJobCreateResponse {
@@ -267,7 +256,6 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
 export default function VagasPage() {
   const [items, setItems] = useState<MarketItem[]>([]);
   const [filteredTotal, setFilteredTotal] = useState(0);
-  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [sources, setSources] = useState<SourceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -313,40 +301,18 @@ export default function VagasPage() {
         params: { enabled_only: false },
       });
       const sourcesData = Array.isArray(response.data) ? (response.data as ScraperConfigSource[]) : [];
-      const categoryMap = new Map<number, CategoryOption>();
-
-      const sourceOptions = sourcesData
-        .map((source) => {
-          const primaryCategory = Array.isArray(source.categories)
-            ? [...source.categories].sort((left, right) => left.id - right.id)[0]
-            : undefined;
-          if (primaryCategory) {
-            categoryMap.set(primaryCategory.id, {
-              id: primaryCategory.id,
-              name: primaryCategory.name,
-            });
-          }
-          return {
+      setSources(
+        sourcesData
+          .map((source) => ({
             id: source.id,
             name: source.name,
-            category_name: primaryCategory?.name ?? null,
-          };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-
-      setCategories(
-        Array.from(categoryMap.values())
+          }))
           .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
       );
-      setSources(sourceOptions);
     } catch {
-      toast.error("Erro ao carregar filtros de categoria e fonte");
+      toast.error("Erro ao carregar filtros de fonte");
     }
   }, []);
-
-  const filteredSourceOptions = useMemo(() => {
-    return sources.filter((source) => source.category_name === "EMPREGOS");
-  }, [sources]);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -365,7 +331,6 @@ export default function VagasPage() {
       };
 
       const filters: Record<string, string | number | boolean> = {};
-      filters.category = "EMPREGOS";
       filters.order_by = "created_at";
       filters.order_direction = selectedCreatedAtSort === "created_asc" ? "asc" : "desc";
       if (trimmedQuery.length >= 2) {
@@ -446,11 +411,11 @@ export default function VagasPage() {
 
   useEffect(() => {
     if (selectedSource === "all") return;
-    const sourceStillAvailable = filteredSourceOptions.some((source) => source.name === selectedSource);
+    const sourceStillAvailable = sources.some((source) => source.name === selectedSource);
     if (!sourceStillAvailable) {
       setSelectedSource("all");
     }
-  }, [filteredSourceOptions, selectedSource]);
+  }, [sources, selectedSource]);
 
   useEffect(() => {
     setOffset(0);
@@ -461,6 +426,7 @@ export default function VagasPage() {
   const canGoNext = items.length === pageSize;
   const selectedOnPageCount = items.filter((item) => selectedItemIds.includes(item.id)).length;
   const allItemsOnPageSelected = items.length > 0 && selectedOnPageCount === items.length;
+  const filterLabelClassName = "text-[10px] font-semibold text-muted-foreground";
 
   const formatPrice = (price: number | null) => {
     if (price == null) return "—";
@@ -495,12 +461,6 @@ export default function VagasPage() {
     return `V${version}`;
   };
 
-
-  const getCategoryLabel = (item: MarketItem): string => {
-    if (item.category_id == null) return "SEM CATEGORIA";
-    const category = categories.find((entry) => entry.id === item.category_id);
-    return category?.name || `CATEGORIA ${item.category_id}`;
-  };
 
   const getUpdatedAtLabel = (item: MarketItem): string => {
     return formatDateTimeDDMMYYYYHHMM(item.updated_at);
@@ -839,22 +799,20 @@ export default function VagasPage() {
   };
 
   return (
-    <div className="flex w-full min-w-0 flex-1 flex-col gap-6 p-4 pt-6 lg:flex-row lg:p-6 lg:pt-8">
+    <div className="flex w-full min-w-0 flex-1 flex-col gap-6 p-4 pt-6 lg:h-[calc(100svh-98px)] lg:min-h-0 lg:max-h-[calc(100svh-98px)] lg:flex-row lg:overflow-hidden lg:px-6 lg:pt-[17px] lg:pb-0">
       {/* Sidebar - Filtros */}
-      <aside className="w-full lg:w-[280px] xl:w-[320px] shrink-0 flex flex-col gap-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Vagas</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Explore oportunidades capturadas ({filteredTotal})
-          </p>
-        </div>
+      <aside className="flex w-full shrink-0 flex-col gap-4 lg:h-full lg:min-h-0 lg:w-[280px] lg:self-stretch lg:overflow-y-auto lg:pr-1 xl:w-[320px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <Card className="py-0">
+          <CardContent className="px-5 pb-5 pt-4 flex flex-col gap-4">
+            <div className="space-y-0.5">
+              <p className="text-sm font-semibold uppercase tracking-wide text-primary">Vagas</p>
+              <p className="text-xs text-muted-foreground">Explore oportunidades capturadas ({filteredTotal})</p>
+            </div>
 
-        <Card>
-          <CardContent className="p-5 flex flex-col gap-5">
             <h2 className="font-semibold text-sm uppercase tracking-wide text-primary">Filtros</h2>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">BUSCA POR TERMOS</label>
+              <label className={filterLabelClassName}>BUSCA POR TERMOS</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -867,7 +825,7 @@ export default function VagasPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">TIPO DE CONTRATO</label>
+              <label className={filterLabelClassName}>TIPO DE CONTRATO</label>
               <div className="grid grid-cols-3 gap-2">
                 {CONTRACT_TYPE_FILTER_OPTIONS.map((option) => {
                   const isActive = selectedContractType === option.value;
@@ -888,7 +846,7 @@ export default function VagasPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">SENIORIDADE</label>
+              <label className={filterLabelClassName}>SENIORIDADE</label>
               <div className="grid grid-cols-4 gap-2">
                 {SENIORITY_FILTER_OPTIONS.map((option) => {
                   const isActive = selectedSeniority === option.value;
@@ -909,49 +867,7 @@ export default function VagasPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">CONTATO</label>
-              <div className="grid grid-cols-2 gap-2">
-                {CONTACT_FILTER_OPTIONS.map((option) => {
-                  const isActive = selectedContactFilter === option.value;
-                  return (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      variant={isActive ? "default" : "outline"}
-                      size="sm"
-                      className="h-9 w-full px-2 text-[11px] uppercase tracking-[0.08em]"
-                      onClick={() => setSelectedContactFilter(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">SALARY RANGE</label>
-              <div className="grid grid-cols-2 gap-2">
-                {SALARY_RANGE_FILTER_OPTIONS.map((option) => {
-                  const isActive = selectedSalaryRangeFilter === option.value;
-                  return (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      variant={isActive ? "default" : "outline"}
-                      size="sm"
-                      className="h-9 w-full px-2 text-[11px] uppercase tracking-[0.08em]"
-                      onClick={() => setSelectedSalaryRangeFilter(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">MOEDA</label>
+              <label className={filterLabelClassName}>MOEDA</label>
               <div className="grid grid-cols-4 gap-2">
                 {CURRENCY_FILTER_OPTIONS.map((option) => {
                   const isActive = selectedCurrencyFilter === option.value;
@@ -972,7 +888,49 @@ export default function VagasPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">FAIXA SALARIAL (BRL)</label>
+              <label className={filterLabelClassName}>CONTATO</label>
+              <div className="grid grid-cols-2 gap-2">
+                {CONTACT_FILTER_OPTIONS.map((option) => {
+                  const isActive = selectedContactFilter === option.value;
+                  return (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className="h-9 w-full px-2 text-[11px] uppercase tracking-[0.08em]"
+                      onClick={() => setSelectedContactFilter(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className={filterLabelClassName}>SALARY RANGE</label>
+              <div className="grid grid-cols-2 gap-2">
+                {SALARY_RANGE_FILTER_OPTIONS.map((option) => {
+                  const isActive = selectedSalaryRangeFilter === option.value;
+                  return (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className="h-9 w-full px-2 text-[11px] uppercase tracking-[0.08em]"
+                      onClick={() => setSelectedSalaryRangeFilter(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className={filterLabelClassName}>FAIXA SALARIAL (BRL)</label>
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={priceMinValue}
@@ -992,14 +950,14 @@ export default function VagasPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">ORIGEM DA VAGA</label>
+              <label className={filterLabelClassName}>ORIGEM DA VAGA</label>
               <Select value={selectedSource} onValueChange={setSelectedSource}>
                 <SelectTrigger className="h-9 w-full shadow-xs">
                   <SelectValue placeholder="Fonte" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas as Fontes</SelectItem>
-                  {filteredSourceOptions.map((source) => (
+                  {sources.map((source) => (
                     <SelectItem key={source.id} value={source.name}>
                       {source.name}
                     </SelectItem>
@@ -1009,7 +967,7 @@ export default function VagasPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">LOCALIDADE (ESTADO)</label>
+              <label className={filterLabelClassName}>LOCALIDADE (ESTADO)</label>
               <Select value={selectedState} onValueChange={setSelectedState}>
                 <SelectTrigger className="h-9 w-full shadow-xs">
                   <SelectValue placeholder="UF" />
@@ -1030,9 +988,10 @@ export default function VagasPage() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 w-full flex flex-col gap-6 min-w-0">
+      <main className="flex h-full w-full min-w-0 flex-1 flex-col gap-6 lg:min-h-0 lg:self-stretch lg:overflow-hidden">
         {/* Top actions/Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-card p-3 rounded-lg border shadow-xs">
+        <div className="shrink-0 rounded-lg border bg-card p-3 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -1118,126 +1077,129 @@ export default function VagasPage() {
             <ChevronRight className="size-4" />
           </Button>
           </div>
+          </div>
         </div>
 
-      {/* Content */}
-      {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[...Array(8)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <Skeleton className="mb-3 h-32 w-full rounded-md" />
-                <Skeleton className="mb-2 h-5 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Search className="mb-4 size-12 text-muted-foreground/40" />
-          <p className="text-lg text-muted-foreground">Nenhum item encontrado</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {items.map((item) => {
-            const externalUrl = getPrimaryExternalUrl(item);
-            return (
-            <Card
-              key={item.id}
-              className="group relative h-[200px] gap-0 overflow-hidden py-0 transition-all hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 cursor-pointer shadow-xs bg-gradient-to-t from-primary/2 to-card dark:bg-card"
-              onClick={(event) => handleCardClick(event, item)}
-            >
-              <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
-                <div
-                  className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background/80"
-                  onClick={(event) => event.stopPropagation()}
+        <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Content */}
+          {loading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {[...Array(8)].map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="p-4">
+                    <Skeleton className="mb-3 h-32 w-full rounded-md" />
+                    <Skeleton className="mb-2 h-5 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Search className="mb-4 size-12 text-muted-foreground/40" />
+              <p className="text-lg text-muted-foreground">Nenhum item encontrado</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {items.map((item) => {
+                const externalUrl = getPrimaryExternalUrl(item);
+                return (
+                <Card
+                  key={item.id}
+                  className="group relative h-[200px] gap-0 overflow-hidden py-0 transition-all hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 cursor-pointer shadow-xs bg-gradient-to-t from-primary/2 to-card dark:bg-card"
+                  onClick={(event) => handleCardClick(event, item)}
                 >
-                  <Checkbox
-                    checked={selectedItemIds.includes(item.id)}
-                    onCheckedChange={(checked) => setItemSelection(item.id, checked === true)}
-                    aria-label={`Selecionar item ${item.id}`}
-                  />
-                </div>
-                {externalUrl && (
-                  <a
-                    href={externalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md border border-border/60 bg-background/80 p-1.5 text-muted-foreground transition-colors hover:text-primary"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLink className="size-3.5" />
-                  </a>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 rounded-md border border-border/60 bg-background/80 text-muted-foreground hover:text-primary"
-                  onClick={(event) => handleRescrapeItem(event, item)}
-                  disabled={reprocessingItemIds.includes(item.id)}
-                  title="Reprocessar item"
-                >
-                  {reprocessingItemIds.includes(item.id) ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-3.5" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 rounded-md border border-border/60 bg-background/80 text-muted-foreground hover:text-destructive"
-                  onClick={(event) => handleDeleteItem(event, item)}
-                  disabled={deletingItemId === item.id || isBulkDeleting}
-                  title="Excluir item"
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-              <div className="flex h-full items-stretch">
-                <CardContent className="flex h-full w-full flex-col p-3 pt-5">
-                  <h3 className="line-clamp-2 min-h-8 text-sm leading-4 font-semibold">{item.title || "—"}</h3>
-                  <p className="mt-1.5 line-clamp-2 min-h-8 text-xs leading-4 text-muted-foreground whitespace-pre-wrap">
-                    {formatDescriptionText(item.description)}
-                  </p>
-                  <div className="mt-2 text-sm font-bold text-primary">
-                    {formatCardPrice(item.price)}
-                  </div>
-                  <div className="mt-2">{mediaIndicators(item)}</div>
-                  <div className="mt-auto flex flex-wrap items-center justify-end gap-1.5 pt-3">
-                    {item.state && (
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-primary/30 text-primary">
-                        {item.state}
-                      </Badge>
-                    )}
-                    {(item.attributes?.contract_type || (item.currency && item.currency !== "BRL")) && (
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-blue-400/30 text-blue-400 font-bold">
-                        {String((item.currency && item.currency !== "BRL") ? "PJ" : (item.attributes?.contract_type ?? "")).toUpperCase()}
-                      </Badge>
-                    )}
-                    <Badge
-                      variant="outline"
-                      className="h-5 cursor-pointer px-1.5 text-[10px]"
-                      onClick={(event) => handleJsonTagClick(event, item)}
-                      title="Ver JSON"
+                  <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+                    <div
+                      className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background/80"
+                      onClick={(event) => event.stopPropagation()}
                     >
-                      <Code2 className="size-3.5" />
-                    </Badge>
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]" title={item.updated_at ?? undefined}>
-                      {getUpdatedAtLabel(item)}
-                    </Badge>
-                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-muted text-muted-foreground">
-                      {getSourceLabel(item)}
-                    </Badge>
+                      <Checkbox
+                        checked={selectedItemIds.includes(item.id)}
+                        onCheckedChange={(checked) => setItemSelection(item.id, checked === true)}
+                        aria-label={`Selecionar item ${item.id}`}
+                      />
+                    </div>
+                    {externalUrl && (
+                      <a
+                        href={externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md border border-border/60 bg-background/80 p-1.5 text-muted-foreground transition-colors hover:text-primary"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 rounded-md border border-border/60 bg-background/80 text-muted-foreground hover:text-primary"
+                      onClick={(event) => handleRescrapeItem(event, item)}
+                      disabled={reprocessingItemIds.includes(item.id)}
+                      title="Reprocessar item"
+                    >
+                      {reprocessingItemIds.includes(item.id) ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 rounded-md border border-border/60 bg-background/80 text-muted-foreground hover:text-destructive"
+                      onClick={(event) => handleDeleteItem(event, item)}
+                      disabled={deletingItemId === item.id || isBulkDeleting}
+                      title="Excluir item"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
                   </div>
-                </CardContent>
-              </div>
-            </Card>
-            );
-          })}
+                  <div className="flex h-full items-stretch">
+                    <CardContent className="flex h-full w-full flex-col p-3 pt-5">
+                      <h3 className="line-clamp-2 min-h-8 text-sm leading-4 font-semibold">{item.title || "—"}</h3>
+                      <p className="mt-1.5 line-clamp-2 min-h-8 text-xs leading-4 text-muted-foreground whitespace-pre-wrap">
+                        {formatDescriptionText(item.description)}
+                      </p>
+                      <div className="mt-2 text-sm font-bold text-primary">
+                        {formatCardPrice(item.price)}
+                      </div>
+                      <div className="mt-2">{mediaIndicators(item)}</div>
+                      <div className="mt-auto flex flex-wrap items-center justify-end gap-1.5 pt-3">
+                        {item.state && (
+                          <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-primary/30 text-primary">
+                            {item.state}
+                          </Badge>
+                        )}
+                        {(item.attributes?.contract_type || (item.currency && item.currency !== "BRL")) && (
+                          <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-blue-400/30 text-blue-400 font-bold">
+                            {String((item.currency && item.currency !== "BRL") ? "PJ" : (item.attributes?.contract_type ?? "")).toUpperCase()}
+                          </Badge>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className="h-5 cursor-pointer px-1.5 text-[10px]"
+                          onClick={(event) => handleJsonTagClick(event, item)}
+                          title="Ver JSON"
+                        >
+                          <Code2 className="size-3.5" />
+                        </Badge>
+                        <Badge variant="outline" className="h-5 px-1.5 text-[10px]" title={item.updated_at ?? undefined}>
+                          {getUpdatedAtLabel(item)}
+                        </Badge>
+                        <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-muted text-muted-foreground">
+                          {getSourceLabel(item)}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </div>
+                </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
 
 
 
@@ -1334,7 +1296,7 @@ export default function VagasPage() {
 
       {/* Right Sidebar - Item Details */}
       {selectedItem && (
-        <aside className="hidden xl:flex w-[500px] shrink-0 flex-col border-l border-border/40 pl-6 h-[calc(100vh-8rem)] overflow-hidden sticky top-8">
+        <aside className="hidden w-[500px] shrink-0 min-h-0 flex-col overflow-hidden border-l border-border/40 pl-6 xl:flex xl:h-full xl:self-stretch">
           <div className="flex flex-col gap-4 mb-4">
             <div className="flex items-center justify-end gap-2 pr-2">
               <Button
@@ -1391,9 +1353,6 @@ export default function VagasPage() {
                   {getSourceLabel(selectedItem)}
                 </Badge>
                 <Badge variant="outline" className="h-5 px-2 text-[10px]">
-                  {getCategoryLabel(selectedItem)}
-                </Badge>
-                <Badge variant="outline" className="h-5 px-2 text-[10px]">
                   {getUpdatedAtLabel(selectedItem)}
                 </Badge>
                 <Badge variant="outline" className="h-5 px-2 text-[10px] bg-primary/5 text-primary border-primary/20 font-bold">
@@ -1403,7 +1362,7 @@ export default function VagasPage() {
             </div>
           </div>
 
-          <div className="flex-1 -mx-2 px-2 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="min-h-0 flex-1 -mx-2 overflow-y-auto overflow-x-hidden px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(() => {
               const imageList = selectedItemImages;
               const attributeEntries = Object.entries(selectedItem.attributes ?? {}).filter(

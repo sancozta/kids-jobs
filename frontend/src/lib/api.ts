@@ -1,5 +1,5 @@
 import axios from "axios";
-import { resolveAgentApiUrl, resolveBackendApiUrl, resolveCpfApiUrl, resolveScrapingApiUrl } from "@/lib/service-urls";
+import { resolveBackendApiUrl, resolveScrapingApiUrl } from "@/lib/service-urls";
 
 export const api = axios.create({
   baseURL: resolveBackendApiUrl(),
@@ -15,20 +15,6 @@ export const scrapingApi = axios.create({
   },
 });
 
-export const agentApi = axios.create({
-  baseURL: resolveAgentApiUrl(),
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
-
-export const cpfApi = axios.create({
-  baseURL: resolveCpfApiUrl(),
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
-
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -37,20 +23,6 @@ api.interceptors.response.use(
 );
 
 scrapingApi.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    return Promise.reject(error);
-  },
-);
-
-agentApi.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    return Promise.reject(error);
-  },
-);
-
-cpfApi.interceptors.response.use(
   (response) => response,
   (error) => {
     return Promise.reject(error);

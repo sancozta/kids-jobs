@@ -18,7 +18,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Kids Jobs",
+  title: "Jobs",
   description: "Monólito pessoal para vagas, currículo, fontes e scrapings",
 };
 

@@ -8,12 +8,11 @@ from configuration.database_configuration import Base
 
 
 class MarketModel(Base):
-    __tablename__ = "sc_market"
+    __tablename__ = "jobs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     url = Column(String(2048), unique=True, nullable=False, index=True)
     source_id = Column(Integer, ForeignKey("sources.id"), nullable=True, index=True)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
     title = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
     price = Column(Float, nullable=True)
@@ -40,7 +39,6 @@ class MarketModel(Base):
             id=self.id,
             url=self.url,
             source_id=self.source_id,
-            category_id=self.category_id,
             title=self.title,
             description=self.description,
             price=self.price,
@@ -69,7 +67,6 @@ class MarketModel(Base):
             id=entity.id,
             url=entity.url,
             source_id=entity.source_id,
-            category_id=entity.category_id,
             title=entity.title,
             description=entity.description,
             price=entity.price,

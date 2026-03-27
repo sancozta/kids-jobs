@@ -20,12 +20,6 @@ from configuration.di_configuration import get_market_service
 router = APIRouter(prefix="/market", tags=["market"])
 
 
-def _parse_categories_query(value: Optional[str]) -> list[str]:
-    if not value:
-        return []
-    return [part.strip() for part in value.split(",") if part.strip()]
-
-
 class MarketBulkDeleteSchema(BaseModel):
     item_ids: list[int] = Field(default_factory=list)
 
@@ -48,7 +42,6 @@ def create_item(
 ):
     entity = Market(
         source_id=body.source_id,
-        category_id=body.category_id,
         url=body.url,
         title=body.title,
         description=body.description,
@@ -74,8 +67,6 @@ def create_item(
 @router.get("/count")
 def count_items(
     q: Optional[str] = Query(None, description="Text query for title/description"),
-    category: Optional[str] = Query(None, description="Filter by category name"),
-    categories: Optional[str] = Query(None, description="Comma-separated category names"),
     min_price: Optional[float] = Query(None, ge=0, description="Minimum price"),
     max_price: Optional[float] = Query(None, ge=0, description="Maximum price"),
     currency: Optional[str] = Query(None, description="Filter by currency"),
@@ -89,14 +80,11 @@ def count_items(
     has_salary_range: Optional[bool] = Query(None, description="Filter items that have salary range"),
     software_focus: Optional[bool] = Query(None, description="Filter items classified as software/TI"),
     actionable_now: Optional[bool] = Query(None, description="Filter items operationally actionable now"),
-    exclude_disabled_categories: bool = Query(False, description="Exclude items from disabled categories"),
     service: MarketService = Depends(get_market_service),
 ):
     """Count market items with advanced filters."""
     total = service.count_with_filters(
         text_query=q,
-        category=category,
-        categories=_parse_categories_query(categories),
         min_price=min_price,
         max_price=max_price,
         currency=currency,
@@ -110,7 +98,6 @@ def count_items(
         has_salary_range=has_salary_range,
         software_focus=software_focus,
         actionable_now=actionable_now,
-        exclude_disabled_categories=exclude_disabled_categories,
     )
     return {"total": total}
 
@@ -136,8 +123,6 @@ def list_items(
     limit: int = Query(default=100, le=500, description="Maximum number of results"),
     offset: int = Query(default=0, ge=0, description="Number of results to skip"),
     q: Optional[str] = Query(None, description="Text query for title/description"),
-    category: Optional[str] = Query(None, description="Filter by category name"),
-    categories: Optional[str] = Query(None, description="Comma-separated category names"),
     min_price: Optional[float] = Query(None, ge=0, description="Minimum price"),
     max_price: Optional[float] = Query(None, ge=0, description="Maximum price"),
     currency: Optional[str] = Query(None, description="Filter by currency"),
@@ -151,7 +136,6 @@ def list_items(
     has_salary_range: Optional[bool] = Query(None, description="Filter items that have salary range"),
     software_focus: Optional[bool] = Query(None, description="Filter items classified as software/TI"),
     actionable_now: Optional[bool] = Query(None, description="Filter items operationally actionable now"),
-    exclude_disabled_categories: bool = Query(False, description="Exclude items from disabled categories"),
     order_by: str = Query(default="created_at", description="Order by field"),
     order_direction: str = Query(default="desc", description="Order direction"),
     service: MarketService = Depends(get_market_service),
@@ -159,8 +143,6 @@ def list_items(
     """List market items with advanced filters."""
     return service.find_with_filters(
         text_query=q,
-        category=category,
-        categories=_parse_categories_query(categories),
         min_price=min_price,
         max_price=max_price,
         currency=currency,
@@ -174,7 +156,6 @@ def list_items(
         has_salary_range=has_salary_range,
         software_focus=software_focus,
         actionable_now=actionable_now,
-        exclude_disabled_categories=exclude_disabled_categories,
         order_by=order_by,
         order_direction=order_direction,
         limit=limit,
@@ -191,7 +172,6 @@ def update_item(
     entity = Market(
         id=item_id,
         source_id=body.source_id,
-        category_id=body.category_id,
         url=body.url,
         title=body.title,
         description=body.description,

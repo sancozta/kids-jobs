@@ -84,7 +84,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <Link href="/">
                 <BrandMark />
                 <div className="flex flex-1 items-center justify-between text-left text-sm leading-tight">
-                  <span className="truncate font-semibold text-base">Kids Jobs</span>
+                  <span className="truncate font-semibold text-base">Jobs</span>
                 </div>
               </Link>
             </SidebarMenuButton>

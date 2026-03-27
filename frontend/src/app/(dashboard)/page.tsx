@@ -3,15 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import {
-  ArrowRight,
-  BriefcaseBusiness,
-  FileText,
-  RefreshCw,
-  ServerCog,
-  TriangleAlert,
-  Workflow,
-} from "lucide-react";
+import { BriefcaseBusiness, FileText, RefreshCw, ServerCog, TriangleAlert, Workflow } from "lucide-react";
+import { toast } from "sonner";
 
 import { SectionCards } from "@/components/section-cards";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/lib/api";
+import { api, scrapingApi } from "@/lib/api";
 import { formatDateTimeDDMMYYYYHHMM } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +31,7 @@ interface MarketItem {
   id: number;
   source_id: number | null;
   title: string | null;
+  description?: string | null;
   url: string | null;
   city: string | null;
   state: string | null;
@@ -77,6 +71,11 @@ interface ChartPoint {
   extracted: number;
   runs: number;
   failures: number;
+}
+
+interface ScraperRunQueuedResponse {
+  job_id?: string;
+  queued_count?: number;
 }
 
 const SAO_PAULO_TIMEZONE = "America/Sao_Paulo";
@@ -181,6 +180,40 @@ function formatJobLocation(item: MarketItem): string {
   return "Local não informado";
 }
 
+function getJobContractTypeTag(item: MarketItem): string | null {
+  const contractType = item.attributes?.contract_type;
+  if (typeof contractType !== "string") return null;
+
+  const normalized = contractType.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "pj" || normalized.includes("pessoa jurid")) return "PJ";
+  if (normalized === "clt") return "CLT";
+
+  return contractType.trim().toUpperCase();
+}
+
+function isRemoteJob(item: MarketItem): boolean {
+  const candidates = [
+    item.city,
+    item.state,
+    typeof item.attributes?.location === "string" ? item.attributes.location : null,
+    typeof item.attributes?.work_model === "string" ? item.attributes.work_model : null,
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim().toLowerCase());
+
+  return candidates.some((value) =>
+    ["remote", "remoto", "home office", "anywhere", "worldwide"].some((token) => value.includes(token)),
+  );
+}
+
+function getDisplayJobLocation(item: MarketItem): string | null {
+  const location = formatJobLocation(item);
+  if (location === "Local não informado") return null;
+  if (isRemoteJob(item)) return null;
+  return location;
+}
+
 function getJobSourceName(item: MarketItem, sourceNameById: Map<number, string>): string {
   if (typeof item.source_id === "number") {
     return sourceNameById.get(item.source_id) ?? `Fonte #${item.source_id}`;
@@ -233,6 +266,7 @@ export default function DashboardPage() {
     backend: "offline",
     scraping: "offline",
   });
+  const [runningAllScrapers, setRunningAllScrapers] = useState(false);
 
   const loadDashboard = useCallback(async (backgroundRefresh = false) => {
     if (backgroundRefresh) {
@@ -242,11 +276,10 @@ export default function DashboardPage() {
     }
 
     const results = await Promise.allSettled([
-      api.get<MarketCountResponse>("/market/count", { params: { category: "EMPREGOS" } }),
-      api.get<MarketItem[]>("/market", {
+      api.get<MarketCountResponse>("/market/count"),
+      api.get<MarketItem[]>("/market/", {
         params: {
-          category: "EMPREGOS",
-          limit: 6,
+          limit: 12,
           order_by: "created_at",
           order_direction: "desc",
         },
@@ -310,11 +343,7 @@ export default function DashboardPage() {
       setExecutions([]);
     }
 
-    setWarning(
-      failedBlocks.length > 0
-        ? `Nem todos os blocos foram atualizados: ${failedBlocks.join(", ")}.`
-        : null,
-    );
+    setWarning(failedBlocks.length > 0 ? `Nem todos os blocos foram atualizados: ${failedBlocks.join(", ")}.` : null);
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -322,6 +351,26 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  const runAllScrapers = useCallback(async () => {
+    setRunningAllScrapers(true);
+    try {
+      const response = await scrapingApi.post<ScraperRunQueuedResponse>("/api/v1/scrapers/run-all");
+      const queuedCount = Number(response.data?.queued_count ?? 0);
+      const jobId = response.data?.job_id;
+
+      toast.success(
+        jobId
+          ? `${queuedCount} scraping(s) enviados para execução (job ${jobId.slice(0, 8)})`
+          : `${queuedCount} scraping(s) enviados para execução`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao executar todos os scrapings";
+      toast.error(message);
+    } finally {
+      setRunningAllScrapers(false);
+    }
+  }, []);
 
   const sourceNameById = useMemo(() => {
     return new Map(sources.map((source) => [source.id, source.name]));
@@ -367,70 +416,64 @@ export default function DashboardPage() {
         const leftTimestamp = left.last_extraction_at ? new Date(left.last_extraction_at).getTime() : 0;
         const rightTimestamp = right.last_extraction_at ? new Date(right.last_extraction_at).getTime() : 0;
         return rightTimestamp - leftTimestamp;
-      })
-      .slice(0, 8);
+      });
   }, [sources]);
 
+  const totalFailuresInRange = useMemo(() => {
+    return chartData.reduce((total, item) => total + item.failures, 0);
+  }, [chartData]);
+
   return (
-    <main className="flex flex-1 flex-col gap-4 px-4 pb-6 lg:px-6">
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-        <Card className="border-border/60 bg-gradient-to-br from-primary/[0.08] via-background to-background">
-          <CardHeader className="gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em]">
-                Dashboard
-              </Badge>
-              <Badge variant="outline" className="rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em]">
-                Monólito local
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <CardTitle className="text-2xl font-semibold tracking-tight md:text-3xl">
-                Visão operacional do `kids-jobs`
-              </CardTitle>
-              <CardDescription className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                Acompanhe o volume de vagas, o estado das fontes, o histórico de scrapings e o acesso rápido às telas de
-                currículo e operação, sem depender do ecossistema Hunt.
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-3">
-              <Button asChild>
-                <Link href="/vagas">
-                  <BriefcaseBusiness className="size-4" />
-                  Abrir vagas
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/resume">
-                  <FileText className="size-4" />
-                  Editar currículo
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/sources">
-                  <ServerCog className="size-4" />
-                  Gerenciar fontes
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/scrapings">
-                  <Workflow className="size-4" />
-                  Ver scrapings
-                </Link>
-              </Button>
-            </div>
-            {warning ? (
-              <div className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-                <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                <span>{warning}</span>
-              </div>
-            ) : null}
+    <main className="flex flex-1 flex-col gap-4 px-4 pt-3 pb-6 lg:px-6 lg:pt-4">
+      <SectionCards stats={stats} health={health} loading={loading} />
+
+      <section className="grid items-stretch gap-4 lg:grid-cols-3">
+        <Card className="h-full gap-4 border-border/60 bg-gradient-to-br from-primary/[0.08] via-background to-background py-4">
+          <CardContent className="flex h-full flex-col gap-1.5 px-4">
+            <Button asChild className="min-h-7 flex-1 w-full justify-start text-xs">
+              <Link href="/vagas">
+                <BriefcaseBusiness className="size-3" />
+                Abrir vagas
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="min-h-7 flex-1 w-full justify-start text-xs">
+              <Link href="/resume">
+                <FileText className="size-3" />
+                Editar currículo
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="min-h-7 flex-1 w-full justify-start text-xs">
+              <Link href="/resume">
+                <FileText className="size-3" />
+                Enviar currículo
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="min-h-7 flex-1 w-full justify-start text-xs">
+              <Link href="/sources">
+                <ServerCog className="size-3" />
+                Gerenciar fontes
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-7 flex-1 w-full justify-start text-xs"
+              onClick={() => void runAllScrapers()}
+              disabled={runningAllScrapers}
+            >
+              <RefreshCw className={cn("size-3", runningAllScrapers && "animate-spin")} />
+              {runningAllScrapers ? "Rodando scrapings..." : "Rodar scrapings"}
+            </Button>
+            <Button asChild variant="outline" className="min-h-7 flex-1 w-full justify-start text-xs">
+              <Link href="/scrapings">
+                <Workflow className="size-3" />
+                Ver scrapings
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
-        <Card className="border-border/60">
+        <Card className="h-full border-border/60">
           <CardHeader className="gap-2">
             <CardTitle className="text-base">Resumo rápido</CardTitle>
             <CardDescription>Acesso às informações críticas de scraping e persistência local.</CardDescription>
@@ -463,22 +506,77 @@ export default function DashboardPage() {
             </Button>
           </CardContent>
         </Card>
+
+        <Card className="h-full border-border/60">
+          <CardHeader className="gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">Operação recente</CardTitle>
+              <Badge variant="outline" className="rounded-lg px-1.5 text-[10px] font-mono">
+                7D
+              </Badge>
+            </div>
+            <CardDescription>Resumo dos últimos disparos registrados no histórico.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+                  Sucesso
+                </p>
+                <p className="mt-1 text-xl font-semibold">{loading ? "..." : operationsSummary.success}</p>
+              </div>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Parcial</p>
+                <p className="mt-1 text-xl font-semibold">{loading ? "..." : operationsSummary.partial}</p>
+              </div>
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-rose-700 dark:text-rose-300">Erro</p>
+                <p className="mt-1 text-xl font-semibold">{loading ? "..." : operationsSummary.error}</p>
+              </div>
+            </div>
+            <div className="space-y-3 rounded-2xl border border-border/60 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Fontes cadastradas</span>
+                <span className="text-sm text-muted-foreground">{sources.length.toLocaleString("pt-BR")}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Fontes habilitadas</span>
+                <span className="text-sm text-muted-foreground">{stats.activeSources.toLocaleString("pt-BR")}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Extraídas hoje</span>
+                <span className="text-sm text-muted-foreground">
+                  {stats.jobsExtractedToday.toLocaleString("pt-BR")}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Falhas em 7 dias</span>
+                <span className="text-sm text-muted-foreground">{totalFailuresInRange.toLocaleString("pt-BR")}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
-      <SectionCards stats={stats} health={health} loading={loading} />
+      {warning ? (
+        <div className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <span>{warning}</span>
+        </div>
+      ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <Card className="border-border/60">
-          <CardHeader>
+      <section>
+        <Card className="gap-4 border-border/60 py-4">
+          <CardHeader className="px-5 pb-0">
             <CardTitle className="text-base">Volume de scraping</CardTitle>
             <CardDescription>Itens extraídos por dia nos últimos 7 dias.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-5">
             {loading ? (
-              <Skeleton className="h-[280px] w-full rounded-2xl" />
+              <Skeleton className="h-[220px] w-full rounded-2xl" />
             ) : (
-              <ChartContainer config={CHART_CONFIG} className="h-[280px] w-full">
-                <AreaChart data={chartData} margin={{ left: 8, right: 8, top: 16 }}>
+              <ChartContainer config={CHART_CONFIG} className="h-[220px] w-full">
+                <AreaChart data={chartData} margin={{ left: 4, right: 4, top: 12 }}>
                   <defs>
                     <linearGradient id="fillExtracted" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--color-extracted)" stopOpacity={0.35} />
@@ -523,58 +621,20 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
-
-        <Card className="border-border/60">
-          <CardHeader>
-            <CardTitle className="text-base">Operação recente</CardTitle>
-            <CardDescription>Resumo dos últimos disparos registrados no histórico.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Sucesso</p>
-                <p className="mt-2 text-2xl font-semibold">{operationsSummary.success}</p>
-              </div>
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Parcial</p>
-                <p className="mt-2 text-2xl font-semibold">{operationsSummary.partial}</p>
-              </div>
-              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-rose-700 dark:text-rose-300">Erro</p>
-                <p className="mt-2 text-2xl font-semibold">{operationsSummary.error}</p>
-              </div>
-            </div>
-            <div className="space-y-3 rounded-2xl border border-border/60 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Fontes cadastradas</span>
-                <span className="text-sm text-muted-foreground">{sources.length.toLocaleString("pt-BR")}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Fontes habilitadas</span>
-                <span className="text-sm text-muted-foreground">{stats.activeSources.toLocaleString("pt-BR")}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Falhas em 7 dias</span>
-                <span className="text-sm text-muted-foreground">
-                  {chartData.reduce((total, item) => total + item.failures, 0).toLocaleString("pt-BR")}
-                </span>
-              </div>
-            </div>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/scrapings">
-                Abrir histórico operacional
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
         <Card className="border-border/60">
           <CardHeader>
-            <CardTitle className="text-base">Últimas vagas</CardTitle>
-            <CardDescription>Oportunidades mais recentes persistidas no `sc_market`.</CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle className="text-base">Últimas vagas</CardTitle>
+                <CardDescription>Oportunidades mais recentes persistidas na tabela `jobs`.</CardDescription>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/vagas">Ir para vagas</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -584,37 +644,62 @@ export default function DashboardPage() {
                 Nenhuma vaga encontrada ainda.
               </div>
             ) : (
-              <div className="space-y-3">
-                {latestJobs.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-border/60 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-2">
-                        <p className="truncate text-sm font-semibold">{item.title?.trim() || `Vaga #${item.id}`}</p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
-                            {getJobSourceName(item, sourceNameById)}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">{formatJobLocation(item)}</span>
+              <div className="space-y-2">
+                {latestJobs.map((item) => {
+                  const contractTypeTag = getJobContractTypeTag(item);
+                  const displayLocation = getDisplayJobLocation(item);
+                  const tags = [
+                    getJobSourceName(item, sourceNameById),
+                    isRemoteJob(item) ? "Remote" : null,
+                    contractTypeTag,
+                  ].filter((value): value is string => Boolean(value));
+
+                  const content = (
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="line-clamp-2 text-sm leading-5 font-semibold">
+                          {item.title?.trim() || `Vaga #${item.id}`}
+                        </p>
+                        {item.description?.trim() ? (
+                          <p className="line-clamp-1 text-xs text-muted-foreground">{item.description.trim()}</p>
+                        ) : null}
+                        {displayLocation ? <span className="text-xs text-muted-foreground">{displayLocation}</span> : null}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <div className="text-right text-[11px] text-muted-foreground">
+                          {formatDateTimeDDMMYYYYHHMM(item.created_at)}
+                        </div>
+                        <div className="flex max-w-[220px] flex-wrap justify-end gap-1.5">
+                          {tags.map((tag) => (
+                            <Badge key={`${item.id}-${tag}`} variant="outline" className="rounded-full px-1.5 py-0 text-[10px]">
+                              {tag}
+                            </Badge>
+                          ))}
                         </div>
                       </div>
-                      <div className="text-right text-xs text-muted-foreground">
-                        {formatDateTimeDDMMYYYYHHMM(item.created_at)}
-                      </div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button asChild size="sm" variant="outline">
-                        <Link href="/vagas">Ver na lista</Link>
-                      </Button>
-                      {item.url ? (
-                        <Button asChild size="sm">
-                          <a href={item.url} target="_blank" rel="noreferrer">
-                            Abrir origem
-                          </a>
-                        </Button>
-                      ) : null}
+                  );
+
+                  if (item.url) {
+                    return (
+                      <a
+                        key={item.id}
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-xl border border-border/60 p-3 transition-colors hover:border-primary/30 hover:bg-accent/20"
+                      >
+                        {content}
+                      </a>
+                    );
+                  }
+
+                  return (
+                    <div key={item.id} className="rounded-xl border border-border/60 p-3">
+                      {content}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -622,8 +707,15 @@ export default function DashboardPage() {
 
         <Card className="border-border/60">
           <CardHeader>
-            <CardTitle className="text-base">Execuções recentes</CardTitle>
-            <CardDescription>Histórico mais recente de runs manuais e agendadas.</CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle className="text-base">Execuções recentes</CardTitle>
+                <CardDescription>Histórico mais recente de runs manuais e agendadas.</CardDescription>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/scrapings">Ir para scrapings</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -633,12 +725,12 @@ export default function DashboardPage() {
                 Nenhuma execução registrada ainda.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {recentExecutions.map((execution) => (
-                  <div key={execution.id} className="rounded-2xl border border-border/60 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
+                  <div key={execution.id} className="rounded-xl border border-border/60 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <p className="text-sm font-semibold">{execution.source_name}</p>
                           <StatusBadge status={execution.status} />
                         </div>
@@ -647,11 +739,11 @@ export default function DashboardPage() {
                           {execution.published_count.toLocaleString("pt-BR")} publicados · trigger {execution.trigger}
                         </p>
                       </div>
-                      <div className="text-right text-xs text-muted-foreground">
+                      <div className="text-right text-[11px] text-muted-foreground">
                         {formatDateTimeDDMMYYYYHHMM(execution.executed_at)}
                       </div>
                     </div>
-                    <p className="mt-3 text-xs text-muted-foreground">
+                    <p className="mt-2 text-xs leading-4.5 text-muted-foreground">
                       {execution.message?.trim() || execution.error_message?.trim() || "Sem mensagem adicional."}
                     </p>
                   </div>
@@ -665,8 +757,15 @@ export default function DashboardPage() {
       <section>
         <Card className="border-border/60">
           <CardHeader>
-            <CardTitle className="text-base">Fontes monitoradas</CardTitle>
-            <CardDescription>Estado atual das principais fontes de jobs carregadas no seed local.</CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle className="text-base">Fontes monitoradas</CardTitle>
+                <CardDescription>Estado atual de todas as fontes de jobs carregadas no seed local.</CardDescription>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/sources">Ir para fontes</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -690,7 +789,9 @@ export default function DashboardPage() {
                         </div>
                         <p className="text-xs text-muted-foreground">
                           Próximo agendamento:{" "}
-                          {source.next_scheduled_at ? formatDateTimeDDMMYYYYHHMM(source.next_scheduled_at) : "não disponível"}
+                          {source.next_scheduled_at
+                            ? formatDateTimeDDMMYYYYHHMM(source.next_scheduled_at)
+                            : "não disponível"}
                         </p>
                       </div>
                       <div className="text-right text-xs text-muted-foreground">

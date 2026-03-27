@@ -1,5 +1,43 @@
 """Runtime settings for kids-jobs backend."""
+from urllib.parse import urlparse
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _normalize_origin(value: str | None) -> str | None:
+    normalized = (value or "").strip().rstrip("/")
+    return normalized or None
+
+
+def _expand_localhost_variants(value: str | None) -> list[str]:
+    origin = _normalize_origin(value)
+    if not origin:
+        return []
+
+    parsed = urlparse(origin)
+    variants = [origin]
+    if parsed.hostname == "localhost":
+        variants.append(origin.replace("localhost", "127.0.0.1", 1))
+    elif parsed.hostname == "127.0.0.1":
+        variants.append(origin.replace("127.0.0.1", "localhost", 1))
+
+    deduplicated: list[str] = []
+    for variant in variants:
+        normalized_variant = _normalize_origin(variant)
+        if normalized_variant and normalized_variant not in deduplicated:
+            deduplicated.append(normalized_variant)
+    return deduplicated
+
+
+def _resolve_cors_origins(origins: list[str], frontend_app_url: str) -> list[str]:
+    resolved: list[str] = []
+
+    for value in [*origins, frontend_app_url]:
+        for variant in _expand_localhost_variants(value):
+            if variant not in resolved:
+                resolved.append(variant)
+
+    return resolved
 
 
 class Settings(BaseSettings):
@@ -44,3 +82,4 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
 settings = Settings()
+settings.cors_origins = _resolve_cors_origins(settings.cors_origins, settings.frontend_app_url)

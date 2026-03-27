@@ -38,11 +38,10 @@ kids-jobs/
 - Porta padrão: `8001`
 - Banco padrão: `sqlite:///./kids-jobs.db`
 - Tabelas relevantes:
-  - `sc_market`
-  - `gr_resume_documents`
+  - `jobs`
+  - `resume_documents`
   - `sources`
-  - `categories`
-  - `sc_rescrape_jobs`
+  - `rescrape_jobs`
   - `source_execution_history`
 - O `MarketService.ingest_raw()` reaproveita o contrato de `ScrapedItem`
 - O reprocessamento agenda jobs localmente e processa a URL com `scrape_url(url)`
@@ -74,7 +73,7 @@ kids-jobs/
   - `/sources`
   - `/scrapings`
 - O dashboard agrega métricas de vagas, histórico de scraping, últimas vagas e estado das fontes
-- Rotas herdadas fora do escopo redirecionam para `/vagas`
+- Rotas herdadas fora do escopo são tratadas por redirects centralizados em `frontend/next.config.ts`, sem páginas-stub copiadas do projeto anterior
 - O storage local do currículo usa a chave `kids-jobs:resume-draft:v1`
 
 #### Contratos úteis
@@ -99,3 +98,5 @@ kids-jobs/
 - Preserve o isolamento do projeto novo; não reutilize serviços do HUNT por conveniência
 - Se adicionar scraper novo, ele deve ser da vertical `jobs`
 - Se mudar contrato ou fluxo local, atualize este `agents.md` e o `README.md`
+- Quando usar `playwright-cli` para validar interface, abra em modo `headed` e redimensione a janela para tela ampla antes de inspecionar ou capturar screenshots
+- Padrão recomendado para este workspace: `open <url> --headed` seguido de `resize 1728 1117`

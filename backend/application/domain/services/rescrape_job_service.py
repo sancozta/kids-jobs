@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import logging
 from typing import Callable, Optional
 
+import requests
+
 from adapters.outbound.scraping.scraper_loader import load_all_scrapers
 from application.domain.entities.rescrape_job import RescrapeJob
 from application.domain.entities.source import Source

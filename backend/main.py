@@ -14,7 +14,6 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.responses import Response
 
-from adapters.inbound.http.category_controller import router as category_router
 from adapters.inbound.http.health_controller import router as health_router
 from adapters.inbound.http.market_controller import router as market_router
 from adapters.inbound.http.rescrape_controller import router as rescrape_router
@@ -23,7 +22,6 @@ from adapters.inbound.http.scraper_controller import router as scraper_router
 from adapters.inbound.http.source_controller import router as source_router
 from adapters.inbound.http.source_execution_history_controller import router as source_execution_history_router
 from adapters.inbound.schedulers.apscheduler_adapter import APSchedulerAdapter
-from adapters.outbound.persistence.category_persistence_adapter import CategoryPersistenceAdapter
 from adapters.outbound.persistence.market_persistence_adapter import MarketPersistenceAdapter
 from adapters.outbound.persistence.rescrape_job_persistence_adapter import RescrapeJobPersistenceAdapter
 from adapters.outbound.persistence.source_execution_history_persistence_adapter import (
@@ -33,7 +31,6 @@ from adapters.outbound.persistence.source_persistence_adapter import SourcePersi
 from adapters.outbound.scraping.scraper_loader import load_all_scrapers
 from application.domain.entities.source_execution_history import SourceExecutionHistory
 from application.domain.exceptions.domain_exceptions import DomainException
-from application.domain.services.category_service import CategoryService
 from application.domain.services.market_service import MarketService
 from application.domain.services.rescrape_job_service import RescrapeJobService, RescrapeProcessSummary
 from application.domain.services.scraper_execution_service import (
@@ -70,7 +67,6 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(source_router)
 app.include_router(source_execution_history_router)
-app.include_router(category_router)
 app.include_router(rescrape_router)
 app.include_router(scraper_router)
 app.include_router(market_router)
@@ -140,7 +136,6 @@ def _build_market_service(db) -> MarketService:
     return MarketService(
         repository=MarketPersistenceAdapter(session=db),
         source_service=SourceService(persistence=SourcePersistenceAdapter(session=db)),
-        category_service=CategoryService(persistence=CategoryPersistenceAdapter(session=db)),
     )
 
 

@@ -14,7 +14,6 @@ from application.domain.exceptions.domain_exceptions import (
     EntityNotFoundException,
     InvalidEntityException,
 )
-from application.domain.services.category_service import CategoryService
 from application.domain.services.source_service import SourceService
 from application.ports.outbound.persistence.market_persistence_port import MarketPersistencePort
 
@@ -25,7 +24,6 @@ class MarketService:
     JOB_SALARY_TYPE_VALUES = {"anual", "mensal", "semanal", "diario", "horario", "outro"}
     PATCHABLE_FIELDS = {
         "source_id",
-        "category_id",
         "url",
         "title",
         "description",
@@ -50,11 +48,9 @@ class MarketService:
         self,
         repository: MarketPersistencePort,
         source_service: Optional[SourceService] = None,
-        category_service: Optional[CategoryService] = None,
     ):
         self.repository = repository
         self.source_service = source_service
-        self.category_service = category_service
 
     @staticmethod
     def _normalize_description_text(value: Any) -> Optional[str]:
@@ -154,15 +150,11 @@ class MarketService:
         return next((float(amount) for amount in amounts if amount > 0), None)
 
     @staticmethod
-    def _sanitize_market_attributes(category_name: Optional[str], attributes: Any) -> dict:
+    def _sanitize_market_attributes(attributes: Any) -> dict:
         if not isinstance(attributes, dict):
             return {}
 
         sanitized = dict(attributes)
-        normalized_category_name = (category_name or "").strip().upper()
-
-        if normalized_category_name != "EMPREGOS":
-            return sanitized
 
         salary_range = MarketService._normalize_job_salary_range(sanitized.get("salary_range"))
         if salary_range is None:
@@ -178,16 +170,9 @@ class MarketService:
 
         return sanitized
 
-    def _resolve_category_name(self, category_id: Optional[int]) -> Optional[str]:
-        if not category_id or not self.category_service:
-            return None
-        category = self.category_service.get_by_id(category_id)
-        return category.name if category else None
-
-    def _sanitize_market_item(self, item: Market, *, category_name: Optional[str] = None) -> Market:
-        resolved_category_name = category_name or self._resolve_category_name(item.category_id)
+    def _sanitize_market_item(self, item: Market) -> Market:
         item.description = self._normalize_description_text(item.description)
-        item.attributes = self._sanitize_market_attributes(resolved_category_name, item.attributes)
+        item.attributes = self._sanitize_market_attributes(item.attributes)
         return item
 
     def create(self, item: Market) -> Market:
@@ -255,11 +240,7 @@ class MarketService:
                 valid_updates[field] = value
 
         if "attributes" in valid_updates:
-            target_category_id = valid_updates.get("category_id", existing.category_id)
-            valid_updates["attributes"] = self._sanitize_market_attributes(
-                self._resolve_category_name(target_category_id),
-                valid_updates["attributes"],
-            )
+            valid_updates["attributes"] = self._sanitize_market_attributes(valid_updates["attributes"])
 
         if not valid_updates:
             raise InvalidEntityException("Nenhum campo valido foi informado para patch")
@@ -288,8 +269,6 @@ class MarketService:
 
     def ingest_raw(self, raw_data: dict) -> Market:
         source_id = None
-        category_id = None
-        category_name = None
 
         source_data = raw_data.get("source", {})
         if source_data and self.source_service:
@@ -297,17 +276,11 @@ class MarketService:
             source = self.source_service.find_or_create_by_name(source_name)
             source_id = source.id
 
-            if self.category_service:
-                category_name = raw_data.get("category", {}).get("name", "EMPREGOS")
-                category = self.category_service.find_or_create_primary_for_source(source.id or 0, category_name)
-                category_id = category.id
-
         scraped = raw_data.get("scraped_data", {})
         item = self._sanitize_market_item(
             Market(
                 url=raw_data.get("url", ""),
                 source_id=source_id,
-                category_id=category_id,
                 title=scraped.get("title"),
                 description=scraped.get("description"),
                 price=scraped.get("price"),
@@ -326,8 +299,7 @@ class MarketService:
                 links=scraped.get("links", []),
                 attributes=scraped.get("attributes", {}),
                 version=raw_data.get("version", 1),
-            ),
-            category_name=category_name,
+            )
         )
 
         dedupe_key = None
@@ -352,7 +324,6 @@ class MarketService:
 
         if existing:
             existing.source_id = item.source_id
-            existing.category_id = item.category_id
             existing.url = existing.url or item.url
             existing.title = item.title or existing.title
             existing.description = item.description or existing.description
@@ -370,10 +341,7 @@ class MarketService:
             existing.videos = item.videos or existing.videos
             existing.documents = item.documents or existing.documents
             existing.links = list(dict.fromkeys([*(existing.links or []), *(item.links or [])]))
-            existing.attributes = self._sanitize_market_attributes(
-                category_name,
-                {**(existing.attributes or {}), **(item.attributes or {})},
-            )
+            existing.attributes = self._sanitize_market_attributes({**(existing.attributes or {}), **(item.attributes or {})})
             existing.version = (existing.version or 0) + 1
             updated = self.repository.update(existing)
             logger.info("Market updated: %s (id=%s)", updated.url, updated.id)
@@ -389,8 +357,6 @@ class MarketService:
     def find_with_filters(
         self,
         text_query: Optional[str] = None,
-        category: Optional[str] = None,
-        categories: Optional[list[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         currency: Optional[str] = None,
@@ -404,7 +370,6 @@ class MarketService:
         has_salary_range: Optional[bool] = None,
         software_focus: Optional[bool] = None,
         actionable_now: Optional[bool] = None,
-        exclude_disabled_categories: bool = False,
         order_by: str = "created_at",
         order_direction: str = "desc",
         limit: int = 100,
@@ -412,8 +377,6 @@ class MarketService:
     ) -> list[Market]:
         return self.repository.find_with_filters(
             text_query=text_query,
-            category=category,
-            categories=categories,
             min_price=min_price,
             max_price=max_price,
             currency=currency,
@@ -427,7 +390,6 @@ class MarketService:
             has_salary_range=has_salary_range,
             software_focus=software_focus,
             actionable_now=actionable_now,
-            exclude_disabled_categories=exclude_disabled_categories,
             order_by=order_by,
             order_direction=order_direction,
             limit=limit,
@@ -437,8 +399,6 @@ class MarketService:
     def count_with_filters(
         self,
         text_query: Optional[str] = None,
-        category: Optional[str] = None,
-        categories: Optional[list[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         currency: Optional[str] = None,
@@ -452,12 +412,9 @@ class MarketService:
         has_salary_range: Optional[bool] = None,
         software_focus: Optional[bool] = None,
         actionable_now: Optional[bool] = None,
-        exclude_disabled_categories: bool = False,
     ) -> int:
         return self.repository.count_with_filters(
             text_query=text_query,
-            category=category,
-            categories=categories,
             min_price=min_price,
             max_price=max_price,
             currency=currency,
@@ -471,5 +428,4 @@ class MarketService:
             has_salary_range=has_salary_range,
             software_focus=software_focus,
             actionable_now=actionable_now,
-            exclude_disabled_categories=exclude_disabled_categories,
         )

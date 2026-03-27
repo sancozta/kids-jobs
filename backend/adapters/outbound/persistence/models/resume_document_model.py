@@ -8,8 +8,8 @@ from configuration.database_configuration import Base
 
 
 class ResumeDocumentModel(Base):
-    __tablename__ = "gr_resume_documents"
-    __table_args__ = (UniqueConstraint("key", name="uq_gr_resume_documents_key"),)
+    __tablename__ = "resume_documents"
+    __table_args__ = (UniqueConstraint("key", name="uq_resume_documents_key"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String(100), nullable=False)

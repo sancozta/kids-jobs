@@ -10,7 +10,7 @@ from configuration.database_configuration import Base
 
 
 class RescrapeJobModel(Base):
-    __tablename__ = "sc_rescrape_jobs"
+    __tablename__ = "rescrape_jobs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     source_name = Column(String, nullable=False, index=True)

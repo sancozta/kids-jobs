@@ -50,8 +50,6 @@ class MarketPersistencePort(ABC):
     def count_with_filters(
         self,
         text_query: Optional[str] = None,
-        category: Optional[str] = None,
-        categories: Optional[list[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         currency: Optional[str] = None,
@@ -65,15 +63,12 @@ class MarketPersistencePort(ABC):
         has_salary_range: Optional[bool] = None,
         software_focus: Optional[bool] = None,
         actionable_now: Optional[bool] = None,
-        exclude_disabled_categories: bool = False,
     ) -> int: ...
 
     @abstractmethod
     def find_with_filters(
         self,
         text_query: Optional[str] = None,
-        category: Optional[str] = None,
-        categories: Optional[list[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         currency: Optional[str] = None,
@@ -87,7 +82,6 @@ class MarketPersistencePort(ABC):
         has_salary_range: Optional[bool] = None,
         software_focus: Optional[bool] = None,
         actionable_now: Optional[bool] = None,
-        exclude_disabled_categories: bool = False,
         order_by: str = "created_at",
         order_direction: str = "desc",
         limit: int = 100,

@@ -5,10 +5,8 @@ from datetime import datetime
 import re
 from typing import Optional
 
-from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 
-from adapters.outbound.persistence.models.category_model import CategoryModel
 from adapters.outbound.persistence.models.market_model import MarketModel
 from adapters.outbound.persistence.models.source_model import SourceModel
 from application.domain.entities.market import Market
@@ -48,7 +46,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
             raise ValueError(f"Market {item.id} not found")
 
         model.source_id = item.source_id
-        model.category_id = item.category_id
         model.url = item.url
         model.title = item.title
         model.description = item.description
@@ -122,9 +119,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
     def _source_name_map(self) -> dict[int, str]:
         return {int(model.id): model.name for model in self.session.query(SourceModel).all()}
 
-    def _category_map(self) -> dict[int, CategoryModel]:
-        return {int(model.id): model for model in self.session.query(CategoryModel).all()}
-
     @staticmethod
     def _normalize_text(value: str | None) -> str:
         return " ".join((value or "").strip().lower().split())
@@ -146,8 +140,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
         self,
         *,
         text_query: Optional[str] = None,
-        category: Optional[str] = None,
-        categories: Optional[list[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         currency: Optional[str] = None,
@@ -161,13 +153,9 @@ class MarketPersistenceAdapter(MarketPersistencePort):
         has_salary_range: Optional[bool] = None,
         software_focus: Optional[bool] = None,
         actionable_now: Optional[bool] = None,
-        exclude_disabled_categories: bool = False,
     ) -> list[Market]:
         items = [model.to_entity() for model in self.session.query(MarketModel).all()]
         source_map = self._source_name_map()
-        category_map = self._category_map()
-        normalized_categories = {self._normalize_text(value).upper() for value in (categories or []) if self._normalize_text(value)}
-        normalized_category = self._normalize_text(category).upper() if category else ""
         normalized_source = self._normalize_text(source)
         normalized_currency = self._normalize_text(currency)
         normalized_state = self._normalize_text(state).upper() if state else ""
@@ -178,17 +166,9 @@ class MarketPersistenceAdapter(MarketPersistencePort):
 
         filtered: list[Market] = []
         for item in items:
-            category_model = category_map.get(int(item.category_id or 0))
-            category_name = (category_model.name if category_model else "").strip().upper()
             source_name = (source_map.get(int(item.source_id or 0)) or "").strip().lower()
             attributes = item.attributes if isinstance(item.attributes, dict) else {}
 
-            if exclude_disabled_categories and category_model and not category_model.enabled:
-                continue
-            if normalized_categories and category_name not in normalized_categories:
-                continue
-            if normalized_category and category_name != normalized_category:
-                continue
             if normalized_source and source_name != normalized_source:
                 continue
             if normalized_query:
@@ -197,7 +177,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
                         item.title or "",
                         item.description or "",
                         source_name,
-                        category_name,
                         str(attributes.get("company") or ""),
                     ]
                 ).lower()
@@ -265,8 +244,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
     def count_with_filters(
         self,
         text_query: Optional[str] = None,
-        category: Optional[str] = None,
-        categories: Optional[list[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         currency: Optional[str] = None,
@@ -280,13 +257,10 @@ class MarketPersistenceAdapter(MarketPersistencePort):
         has_salary_range: Optional[bool] = None,
         software_focus: Optional[bool] = None,
         actionable_now: Optional[bool] = None,
-        exclude_disabled_categories: bool = False,
     ) -> int:
         return len(
             self._filter_entities(
                 text_query=text_query,
-                category=category,
-                categories=categories,
                 min_price=min_price,
                 max_price=max_price,
                 currency=currency,
@@ -300,15 +274,12 @@ class MarketPersistenceAdapter(MarketPersistencePort):
                 has_salary_range=has_salary_range,
                 software_focus=software_focus,
                 actionable_now=actionable_now,
-                exclude_disabled_categories=exclude_disabled_categories,
             )
         )
 
     def find_with_filters(
         self,
         text_query: Optional[str] = None,
-        category: Optional[str] = None,
-        categories: Optional[list[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         currency: Optional[str] = None,
@@ -322,7 +293,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
         has_salary_range: Optional[bool] = None,
         software_focus: Optional[bool] = None,
         actionable_now: Optional[bool] = None,
-        exclude_disabled_categories: bool = False,
         order_by: str = "created_at",
         order_direction: str = "desc",
         limit: int = 100,
@@ -330,8 +300,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
     ) -> list[Market]:
         items = self._filter_entities(
             text_query=text_query,
-            category=category,
-            categories=categories,
             min_price=min_price,
             max_price=max_price,
             currency=currency,
@@ -345,7 +313,6 @@ class MarketPersistenceAdapter(MarketPersistencePort):
             has_salary_range=has_salary_range,
             software_focus=software_focus,
             actionable_now=actionable_now,
-            exclude_disabled_categories=exclude_disabled_categories,
         )
 
         reverse = order_direction.lower() != "asc"

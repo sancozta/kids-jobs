@@ -13,7 +13,6 @@ class Market:
     # References
     url: str = ""
     source_id: Optional[int] = None
-    category_id: Optional[int] = None
 
     # Dados do anuncio
     title: Optional[str] = None

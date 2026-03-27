@@ -52,36 +52,14 @@ class _FakeSourceAdapter:
         return None
 
 
-class _FakeCategoryAdapter:
-    saved_categories = []
-
-    def __init__(self, session):
-        self.session = session
-
-    def find_by_source_id(self, source_id: int, enabled_only: bool = False):
-        return []
-
-    def save(self, category):
-        self.__class__.saved_categories.append(category)
-        return category
-
-    def update(self, category):
-        return category
-
-    def delete(self, category_id: int) -> None:
-        return None
-
-
 def _patch_seed_dependencies(monkeypatch, *, config: ScraperConfig) -> None:
     _FakeSourceAdapter.saved_sources = []
     _FakeSourceAdapter.updated_sources = []
-    _FakeCategoryAdapter.saved_categories = []
 
     monkeypatch.setattr(seed_module, "init_db", lambda: None)
     monkeypatch.setattr(seed_module, "load_all_scrapers", lambda: None)
     monkeypatch.setattr(seed_module, "SessionLocal", lambda: _FakeDbSession())
     monkeypatch.setattr(seed_module, "SourcePersistenceAdapter", _FakeSourceAdapter)
-    monkeypatch.setattr(seed_module, "CategoryPersistenceAdapter", _FakeCategoryAdapter)
     monkeypatch.setattr(
         seed_module,
         "ScraperRegistry",
@@ -121,28 +99,6 @@ def test_seed_sources_uses_config_enabled_for_new_source(monkeypatch) -> None:
 
     assert result["created"] == 1
     assert _FakeSourceAdapter.saved_sources[0].enabled is False
-
-
-def test_seed_sources_maps_tenders_to_licitacoes(monkeypatch) -> None:
-    config = ScraperConfig(
-        metadata=ScraperMetadata(
-            name="pncp_licitacoes",
-            display_name="PNCP Licitações",
-            description="Teste",
-            category=ScrapingCategory.TENDERS,
-            source_type=SourceType.API,
-        ),
-        base_url="https://pncp.gov.br/api/consulta",
-        enabled=True,
-        schedule="0 */6 * * *",
-    )
-    _FakeSourceAdapter.existing_source = None
-    _patch_seed_dependencies(monkeypatch, config=config)
-
-    seed_module.seed_sources()
-
-    assert _FakeCategoryAdapter.saved_categories[0].name == "LICITAÇÕES"
-
 
 def test_seed_sources_persists_extra_config_for_new_source(monkeypatch) -> None:
     config = _build_config(name="pncp_licitacoes")
