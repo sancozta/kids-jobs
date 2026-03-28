@@ -5,7 +5,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type S
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DownloadIcon, GripVerticalIcon, ImagePlusIcon, MailIcon, RotateCcwIcon, PlusIcon, Trash2Icon, FileTextIcon, SaveIcon } from "lucide-react";
+import { CopyIcon, EyeIcon, EyeOffIcon, GripVerticalIcon, ImagePlusIcon, ImportIcon, MailIcon, PlusIcon, RotateCcwIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ResumePreview } from "@/components/resume-preview";
@@ -117,35 +117,63 @@ const RESUME_THEME_PRESETS: ResumeThemePreset[] = [
   { label: "Rose Soft", accentColor: "#be123c", sidebarBackground: "#fdf2f8", pageBackground: "#faf5ff" },
 ];
 
+function PdfIcon({ className = "size-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2v5a1 1 0 0 0 1 1h5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <text x="7.15" y="14.1" fontSize="4.4" fontWeight="800" fill="currentColor" stroke="none">
+        PDF
+      </text>
+      <path d="M7.5 17.5h9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ThemeColorPalettePicker({
   id,
   label,
   value,
   palette,
   onChange,
+  compact = false,
 }: {
   id: string;
   label: string;
   value: string;
   palette: readonly string[];
   onChange: (value: string) => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <div className="flex w-12 flex-col items-center gap-2 text-center">
+      <div className={compact ? "shrink-0" : "flex w-12 flex-col items-center gap-2 text-center"}>
         <PopoverTrigger asChild>
           <button
             id={id}
             type="button"
             aria-label={`Escolher cor de ${label}`}
-            className="relative block h-12 w-12 overflow-hidden rounded-full border border-border shadow-sm transition"
+            title={label}
+            className={`relative block overflow-hidden rounded-full border border-border shadow-sm transition ${compact ? "h-9 w-9" : "h-12 w-12"}`}
           >
             <span className="absolute inset-0 rounded-full" style={{ backgroundColor: value }} />
           </button>
         </PopoverTrigger>
-        <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">{label}</span>
+        {compact ? null : <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">{label}</span>}
       </div>
       <PopoverContent className="w-[264px] p-3" align="start">
         <div className="mb-3 text-xs font-medium text-muted-foreground">{label}</div>
@@ -175,26 +203,29 @@ function ThemeColorPalettePicker({
 
 function ThemePresetPicker({
   onApply,
+  compact = false,
 }: {
   onApply: (preset: ResumeThemePreset) => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <div className="flex w-12 flex-col items-center gap-2 text-center">
+      <div className={compact ? "shrink-0" : "flex w-12 flex-col items-center gap-2 text-center"}>
         <PopoverTrigger asChild>
           <button
             type="button"
             aria-label="Aplicar combinação de cores"
-            className="relative block h-12 w-12 overflow-hidden rounded-full border border-border shadow-sm transition"
+            title="Aplicar combinação de cores"
+            className={`relative block overflow-hidden rounded-full border border-border shadow-sm transition ${compact ? "h-9 w-9" : "h-12 w-12"}`}
           >
             <span className="absolute inset-0" style={{ backgroundColor: RESUME_THEME_PRESETS[0].pageBackground }} />
             <span className="absolute inset-y-0 left-0 w-1/3" style={{ backgroundColor: RESUME_THEME_PRESETS[0].accentColor }} />
             <span className="absolute inset-y-0 right-0 w-1/3" style={{ backgroundColor: RESUME_THEME_PRESETS[0].sidebarBackground }} />
           </button>
         </PopoverTrigger>
-        <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">Combos</span>
+        {compact ? null : <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">Combos</span>}
       </div>
       <PopoverContent className="w-[280px] p-3" align="start">
         <div className="mb-3 text-xs font-medium text-muted-foreground">Combinações prontas</div>
@@ -271,7 +302,7 @@ function buildSkillGroupItemDrafts(value: ResumeSkillGroup[]): string[] {
 
 function splitSkillItems(value: string): string[] {
   return value
-    .split(",")
+    .split(/[,\u2022]/)
     .map((entry) => entry.trim())
     .filter(Boolean);
 }
@@ -410,11 +441,14 @@ export default function ResumePage() {
   const [emailTo, setEmailTo] = useState("");
   const [emailSubject, setEmailSubject] = useState(getEmailTemplate("personal", DEFAULT_RESUME_LOCALE).subject);
   const [emailMessage, setEmailMessage] = useState(getEmailTemplate("personal", DEFAULT_RESUME_LOCALE).message);
+  const [showEditorPanels, setShowEditorPanels] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const resume = resumeByLocale[resumeLocale];
   const defaultResume = defaultResumeByLocale[resumeLocale];
   const skillGroupItemDrafts = skillGroupItemDraftsByLocale[resumeLocale];
   const isLoaded = loadedLocales[resumeLocale];
+  const quickControlButtonClassName =
+    "relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-background p-0 transition";
 
   const setResume = (value: SetStateAction<ResumeDocument>) => {
     setResumeByLocale((current) => ({
@@ -563,6 +597,167 @@ export default function ResumePage() {
       ...current,
       solvedProblems: current.solvedProblems.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item)),
     }));
+  };
+
+  const updateCertification = (index: number, value: string) => {
+    setResume((current) => ({
+      ...current,
+      certifications: current.certifications.map((item, itemIndex) => (itemIndex === index ? value : item)),
+    }));
+  };
+
+  const addLanguage = () => {
+    setResume((current) => ({ ...current, languages: [...current.languages, createEmptyLanguage()] }));
+  };
+
+  const removeLanguage = (index: number) => {
+    setResume((current) => ({ ...current, languages: current.languages.filter((_, itemIndex) => itemIndex !== index) }));
+  };
+
+  const addEducation = () => {
+    setResume((current) => ({ ...current, education: [...current.education, createEmptyEducation()] }));
+  };
+
+  const removeEducation = (index: number) => {
+    setResume((current) => ({ ...current, education: current.education.filter((_, itemIndex) => itemIndex !== index) }));
+  };
+
+  const addExperience = () => {
+    setResume((current) => ({ ...current, experiences: [...current.experiences, createEmptyExperience()] }));
+  };
+
+  const removeExperience = (index: number) => {
+    setResume((current) => ({ ...current, experiences: current.experiences.filter((_, itemIndex) => itemIndex !== index) }));
+  };
+
+  const addSolvedProblem = () => {
+    setResume((current) => ({ ...current, solvedProblems: [...current.solvedProblems, createEmptySolvedProblem()] }));
+  };
+
+  const removeSolvedProblem = (index: number) => {
+    setResume((current) => ({ ...current, solvedProblems: current.solvedProblems.filter((_, itemIndex) => itemIndex !== index) }));
+  };
+
+  const addCertification = () => {
+    setResume((current) => ({ ...current, certifications: [...current.certifications, ""] }));
+  };
+
+  const removeCertification = (index: number) => {
+    setResume((current) => ({ ...current, certifications: current.certifications.filter((_, itemIndex) => itemIndex !== index) }));
+  };
+
+  const addSkillGroup = () => {
+    setResume((current) => ({ ...current, skillGroups: [...current.skillGroups, createEmptySkillGroup()] }));
+    setSkillGroupItemDrafts((current) => [...current, ""]);
+  };
+
+  const removeSkillGroup = (index: number) => {
+    setResume((current) => ({ ...current, skillGroups: current.skillGroups.filter((_, itemIndex) => itemIndex !== index) }));
+    setSkillGroupItemDrafts((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const renderAppearanceQuickControls = ({
+    compact,
+    idPrefix,
+  }: {
+    compact: boolean;
+    idPrefix: string;
+  }) => {
+    const controlButtonClassName = compact
+      ? quickControlButtonClassName
+      : "relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-background p-0 transition";
+    const imageUploadClassName = compact
+      ? "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-muted-foreground transition hover:bg-muted/50"
+      : "flex h-12 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-muted-foreground transition hover:bg-muted/50";
+    const imageIconClassName = compact ? "size-3.5" : "size-4";
+    const frameInsetClassName = compact ? "absolute inset-[6px] rounded-full" : "absolute inset-[8px] rounded-full";
+    const frameBarClassName = compact ? "absolute inset-y-[7px] left-[7px] w-[6px] rounded-full bg-primary/25" : "absolute inset-y-[9px] left-[8px] w-[8px] rounded-full bg-primary/25";
+    const minimalFrameBorderClassName = compact ? "absolute inset-[7px] rounded-full border border-primary/20" : "absolute inset-[9px] rounded-full border border-primary/20";
+    const minimalFrameTopBarClassName = compact ? "absolute left-[8px] top-[11px] h-[2px] w-[11px] bg-primary/70" : "absolute left-[10px] top-[13px] h-[2px] w-[14px] bg-primary/70";
+    const minimalFrameBottomBarClassName = compact ? "absolute bottom-[11px] right-[8px] h-[2px] w-[13px] bg-primary/45" : "absolute bottom-[13px] right-[10px] h-[2px] w-[16px] bg-primary/45";
+    const uppercaseTextClassName = compact ? "text-[9px]" : "text-[11px]";
+
+    return (
+      <div className={compact ? "flex min-w-max items-center gap-2" : "flex min-w-max items-start gap-4"}>
+        {RESUME_THEME_COLOR_FIELDS.map((item) => (
+          <ThemeColorPalettePicker
+            key={`${idPrefix}-${item.field}`}
+            id={`${item.id}-${idPrefix}`}
+            compact={compact}
+            label={item.label}
+            value={resume.theme[item.field]}
+            palette={item.palette}
+            onChange={(color) => updateTheme(item.field, color)}
+          />
+        ))}
+        <ThemePresetPicker compact={compact} onApply={applyThemePreset} />
+        <div className={compact ? "shrink-0" : "flex w-12 flex-col items-center gap-2 text-center"}>
+          <label
+            htmlFor="photo-upload"
+            title={resume.profile.photoDataUrl ? "Trocar foto" : "Enviar foto"}
+            className={imageUploadClassName}
+          >
+            {resume.profile.photoDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={resume.profile.photoDataUrl} alt="Foto de perfil" className="h-full w-full object-cover" />
+            ) : (
+              <ImagePlusIcon className={imageIconClassName} />
+            )}
+          </label>
+          {compact ? null : <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">Profile</span>}
+        </div>
+        {RESUME_PHOTO_FRAME_STYLE_OPTIONS.map((option) => {
+          const isEditorial = option.value === "editorial";
+          const isActive = resume.theme.photoFrameStyle === option.value;
+
+          return (
+            <Fragment key={`${idPrefix}-${option.value}`}>
+              <div className={compact ? "shrink-0" : "flex w-12 flex-col items-center gap-2 text-center"}>
+                <button
+                  type="button"
+                  aria-label={option.label}
+                  title={option.label}
+                  aria-pressed={isActive}
+                  onClick={() => updateTheme("photoFrameStyle", option.value as ResumePhotoFrameStyle)}
+                  className={`${controlButtonClassName} ${isActive ? "border-primary bg-primary/8 ring-2 ring-primary/15" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}
+                >
+                  <span
+                    className={`relative block h-full w-full rounded-full ${isEditorial ? "" : "bg-[linear-gradient(135deg,rgba(79,70,229,0.10),rgba(15,23,42,0.03))]"}`}
+                  >
+                    {isEditorial ? (
+                      <>
+                        <span className={`${frameInsetClassName} bg-[linear-gradient(180deg,rgba(79,70,229,0.18),#ffffff_70%)]`} />
+                        <span className={frameBarClassName} />
+                      </>
+                    ) : (
+                      <>
+                        <span className={minimalFrameBorderClassName} />
+                        <span className={minimalFrameTopBarClassName} />
+                        <span className={minimalFrameBottomBarClassName} />
+                      </>
+                    )}
+                  </span>
+                </button>
+                {compact ? null : <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">Mod</span>}
+              </div>
+            </Fragment>
+          );
+        })}
+        <div className={compact ? "shrink-0" : "flex w-12 flex-col items-center gap-2 text-center"}>
+          <button
+            type="button"
+            aria-label="Alternar habilidades em maiúsculas"
+            title="Habilidades em maiúsculas"
+            aria-pressed={resume.theme.uppercaseSkills}
+            onClick={() => updateTheme("uppercaseSkills", !resume.theme.uppercaseSkills)}
+            className={`${controlButtonClassName} ${resume.theme.uppercaseSkills ? "border-primary bg-primary/10 ring-2 ring-primary/15" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}
+          >
+            <span className={`${uppercaseTextClassName} font-black uppercase tracking-[0.08em] text-foreground`}>AA</span>
+          </button>
+          {compact ? null : <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">Caps</span>}
+        </div>
+      </div>
+    );
   };
 
   const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -733,45 +928,101 @@ export default function ResumePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup
-            type="single"
-            value={resumeLocale}
-            onValueChange={(value) => {
-              if (!value) return;
-              setResumeLocale(normalizeResumeLocale(value));
-            }}
+          <div className="flex items-center gap-2">
+            <ToggleGroup
+              type="single"
+              value={resumeLocale}
+              onValueChange={(value) => {
+                if (!value) return;
+                setResumeLocale(normalizeResumeLocale(value));
+              }}
+              variant="outline"
+              className="overflow-hidden"
+            >
+              {RESUME_LOCALE_OPTIONS.map((option) => (
+                <ToggleGroupItem key={option.value} value={option.value} className="min-w-11 px-3 text-xs font-semibold">
+                  {option.shortLabel}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="shrink-0"
+              onClick={() => setShowEditorPanels((current) => !current)}
+              aria-label={showEditorPanels ? "Modo de edição visível" : "Modo de edição oculta"}
+              title={showEditorPanels ? "Modo de edição visível" : "Modo de edição oculta"}
+            >
+              {showEditorPanels ? <EyeIcon className="size-4" /> : <EyeOffIcon className="size-4" />}
+            </Button>
+          </div>
+          <Button
+            type="button"
             variant="outline"
-            className="overflow-hidden"
+            size="icon"
+            className="shrink-0"
+            onClick={() => handleImportJsonDialogOpenChange(true)}
+            aria-label="Importar JSON"
+            title="Importar JSON"
           >
-            {RESUME_LOCALE_OPTIONS.map((option) => (
-              <ToggleGroupItem key={option.value} value={option.value} className="min-w-11 px-3 text-xs font-semibold">
-                {option.shortLabel}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <Button type="button" variant="outline" onClick={() => handleImportJsonDialogOpenChange(true)}>
-            <FileTextIcon className="mr-2 size-4" />
-            Importar JSON
+            <ImportIcon className="size-4" />
           </Button>
-          <Button type="button" variant="outline" onClick={() => setIsEmailDialogOpen(true)} disabled={!isLoaded}>
-            <MailIcon className="mr-2 size-4" />
-            Enviar Email
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setIsEmailDialogOpen(true)}
+            disabled={!isLoaded}
+            aria-label="Enviar Email"
+            title="Enviar Email"
+          >
+            <MailIcon className="size-4" />
           </Button>
-          <Button type="button" variant="outline" onClick={saveResume} disabled={isSaving || !isLoaded}>
-            <SaveIcon className="mr-2 size-4" />
-            {isSaving ? "Salvando..." : "Salvar"}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={saveResume}
+            disabled={isSaving || !isLoaded}
+            aria-label={isSaving ? "Salvando" : "Salvar"}
+            title={isSaving ? "Salvando" : "Salvar"}
+          >
+            <SaveIcon className="size-4" />
           </Button>
-          <Button type="button" variant="outline" onClick={copyResumeJson}>
-            <FileTextIcon className="mr-2 size-4" />
-            Copiar JSON
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={copyResumeJson}
+            aria-label="Copiar JSON"
+            title="Copiar JSON"
+          >
+            <CopyIcon className="size-4" />
           </Button>
-          <Button type="button" variant="outline" onClick={restoreDefaultResume}>
-            <RotateCcwIcon className="mr-2 size-4" />
-            Restaurar Base
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={restoreDefaultResume}
+            aria-label="Restaurar Base"
+            title="Restaurar Base"
+          >
+            <RotateCcwIcon className="size-4" />
           </Button>
-          <Button type="button" onClick={openExportView}>
-            <DownloadIcon className="mr-2 size-4" />
-            Gerar PDF
+          <Button
+            type="button"
+            size="icon"
+            className="shrink-0"
+            onClick={openExportView}
+            aria-label="Gerar PDF"
+            title="Gerar PDF"
+          >
+            <PdfIcon />
           </Button>
         </div>
       </div>
@@ -860,436 +1111,389 @@ export default function ResumePage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(460px,560px)_minmax(0,1fr)_minmax(460px,560px)] lg:items-start">
-        <div className="space-y-6 lg:pr-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Aparência</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="overflow-x-auto pb-1">
-                <div className="flex min-w-max items-start gap-4">
-                  {RESUME_THEME_COLOR_FIELDS.map((item) => (
-                    <ThemeColorPalettePicker
-                      key={item.field}
-                      id={item.id}
-                      label={item.label}
-                      value={resume.theme[item.field]}
-                      palette={item.palette}
-                      onChange={(color) => updateTheme(item.field, color)}
-                    />
-                  ))}
-                  <ThemePresetPicker onApply={applyThemePreset} />
-                  <div className="flex w-12 flex-col items-center gap-2 text-center">
-                    <label
-                      htmlFor="photo-upload"
-                      title={resume.profile.photoDataUrl ? "Trocar foto" : "Enviar foto"}
-                      className="flex h-12 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-muted-foreground transition hover:bg-muted/50"
-                    >
-                      {resume.profile.photoDataUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={resume.profile.photoDataUrl} alt="Foto de perfil" className="h-full w-full object-cover" />
-                      ) : (
-                        <ImagePlusIcon className="size-4" />
-                      )}
-                    </label>
-                    <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">Profile</span>
-                  </div>
-                  {RESUME_PHOTO_FRAME_STYLE_OPTIONS.map((option) => {
-                    const isEditorial = option.value === "editorial";
-                    const isActive = resume.theme.photoFrameStyle === option.value;
-                    const shortLabel = "Mod";
+      <input id="photo-upload" type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
 
-                    return (
-                      <Fragment key={option.value}>
-                        <div className="flex w-12 flex-col items-center gap-2 text-center">
-                          <button
-                            type="button"
-                            aria-label={option.label}
-                            title={option.label}
-                            aria-pressed={isActive}
-                            onClick={() => updateTheme("photoFrameStyle", option.value as ResumePhotoFrameStyle)}
-                            className={`relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border bg-background p-0 transition ${isActive ? "border-primary bg-primary/8 ring-2 ring-primary/15" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}
-                          >
-                            <span
-                              className={`relative block h-full w-full rounded-full ${isEditorial ? "" : "bg-[linear-gradient(135deg,rgba(79,70,229,0.10),rgba(15,23,42,0.03))]"}`}
-                            >
-                              {isEditorial ? (
-                                <>
-                                  <span className="absolute inset-[8px] rounded-full bg-[linear-gradient(180deg,rgba(79,70,229,0.18),#ffffff_70%)]" />
-                                  <span className="absolute inset-y-[9px] left-[8px] w-[8px] rounded-full bg-primary/25" />
-                                </>
-                              ) : (
-                                <>
-                                  <span className="absolute inset-[9px] rounded-full border border-primary/20" />
-                                  <span className="absolute left-[10px] top-[13px] h-[2px] w-[14px] bg-primary/70" />
-                                  <span className="absolute bottom-[13px] right-[10px] h-[2px] w-[16px] bg-primary/45" />
-                                </>
-                              )}
-                            </span>
-                          </button>
-                          <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">{shortLabel}</span>
-                        </div>
-                        {isEditorial ? (
-                          <div className="flex w-12 flex-col items-center gap-2 text-center">
-                            <button
-                              type="button"
-                              aria-label="Alternar habilidades em maiúsculas"
-                              title="Habilidades em maiúsculas"
-                              aria-pressed={resume.theme.uppercaseSkills}
-                              onClick={() => updateTheme("uppercaseSkills", !resume.theme.uppercaseSkills)}
-                              className={`relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border bg-background p-0 transition ${resume.theme.uppercaseSkills ? "border-primary bg-primary/10 ring-2 ring-primary/15" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}
-                            >
-                              <span className="text-[11px] font-black uppercase tracking-[0.08em] text-foreground">AA</span>
-                            </button>
-                            <span className="min-h-4 text-center text-xs font-medium leading-none text-muted-foreground">Caps</span>
-                          </div>
-                        ) : null}
-                      </Fragment>
-                    );
-                  })}
+      <div className={`grid gap-6 lg:items-start ${showEditorPanels ? "lg:grid-cols-[minmax(460px,560px)_minmax(0,1fr)_minmax(460px,560px)]" : "lg:grid-cols-[minmax(0,1fr)]"}`}>
+        {showEditorPanels ? (
+          <div className="space-y-6 lg:pr-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Aparência</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="overflow-x-auto pb-1">
+                  {renderAppearanceQuickControls({ compact: false, idPrefix: "appearance" })}
                 </div>
-              </div>
-              <input id="photo-upload" type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="font-scale">Escala da fonte</Label>
-                    <Input
-                      id="font-scale-number"
-                      type="number"
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="font-scale">Escala da fonte</Label>
+                      <Input
+                        id="font-scale-number"
+                        type="number"
+                        min="85"
+                        max="120"
+                        step="1"
+                        value={Math.round(resume.theme.fontScale * 100)}
+                        onChange={(e) => updateTheme("fontScale", Number(e.target.value || 100) / 100)}
+                        className="h-9 w-24 text-right"
+                      />
+                    </div>
+                    <input
+                      id="font-scale"
+                      type="range"
                       min="85"
                       max="120"
                       step="1"
                       value={Math.round(resume.theme.fontScale * 100)}
-                      onChange={(e) => updateTheme("fontScale", Number(e.target.value || 100) / 100)}
-                      className="h-9 w-24 text-right"
+                      onChange={(e) => updateTheme("fontScale", Number(e.target.value) / 100)}
+                      className="w-full accent-primary"
                     />
                   </div>
-                  <input
-                    id="font-scale"
-                    type="range"
-                    min="85"
-                    max="120"
-                    step="1"
-                    value={Math.round(resume.theme.fontScale * 100)}
-                    onChange={(e) => updateTheme("fontScale", Number(e.target.value) / 100)}
-                    className="w-full accent-primary"
-                  />
-                </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="sidebar-width">Largura da coluna</Label>
-                    <Input
-                      id="sidebar-width-number"
-                      type="number"
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="sidebar-width">Largura da coluna</Label>
+                      <Input
+                        id="sidebar-width-number"
+                        type="number"
+                        min="220"
+                        max="340"
+                        step="1"
+                        value={Math.round(resume.theme.sidebarWidth)}
+                        onChange={(e) => updateTheme("sidebarWidth", Number(e.target.value || 275))}
+                        className="h-9 w-24 text-right"
+                      />
+                    </div>
+                    <input
+                      id="sidebar-width"
+                      type="range"
                       min="220"
                       max="340"
                       step="1"
                       value={Math.round(resume.theme.sidebarWidth)}
-                      onChange={(e) => updateTheme("sidebarWidth", Number(e.target.value || 275))}
-                      className="h-9 w-24 text-right"
+                      onChange={(e) => updateTheme("sidebarWidth", Number(e.target.value))}
+                      className="w-full accent-primary"
                     />
                   </div>
-                  <input
-                    id="sidebar-width"
-                    type="range"
-                    min="220"
-                    max="340"
-                    step="1"
-                    value={Math.round(resume.theme.sidebarWidth)}
-                    onChange={(e) => updateTheme("sidebarWidth", Number(e.target.value))}
-                    className="w-full accent-primary"
-                  />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Dados Pessoais</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Nome completo</Label>
+                    <Input value={resume.profile.fullName} onChange={(e) => updateProfile("fullName", e.target.value)} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Endereço</Label>
+                    <Input value={resume.profile.address} onChange={(e) => updateProfile("address", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Telefone</Label>
+                    <Input value={resume.profile.phone} onChange={(e) => updateProfile("phone", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input value={resume.profile.email} onChange={(e) => updateProfile("email", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>LinkedIn</Label>
+                    <Input value={resume.profile.linkedin} onChange={(e) => updateProfile("linkedin", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>GitHub</Label>
+                    <Input value={resume.profile.github} onChange={(e) => updateProfile("github", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Portfólio</Label>
+                    <Input value={resume.profile.portfolio} onChange={(e) => updateProfile("portfolio", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Estado civil</Label>
+                    <Input value={resume.profile.maritalStatus} onChange={(e) => updateProfile("maritalStatus", e.target.value)} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Nacionalidade</Label>
+                    <Input value={resume.profile.nationality} onChange={(e) => updateProfile("nationality", e.target.value)} />
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Dados Pessoais</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2 md:col-span-2">
-                <Label>Nome completo</Label>
-                <Input value={resume.profile.fullName} onChange={(e) => updateProfile("fullName", e.target.value)} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>Endereço</Label>
-                <Input value={resume.profile.address} onChange={(e) => updateProfile("address", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Telefone</Label>
-                <Input value={resume.profile.phone} onChange={(e) => updateProfile("phone", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input value={resume.profile.email} onChange={(e) => updateProfile("email", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>LinkedIn</Label>
-                <Input value={resume.profile.linkedin} onChange={(e) => updateProfile("linkedin", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>GitHub</Label>
-                <Input value={resume.profile.github} onChange={(e) => updateProfile("github", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Portfólio</Label>
-                <Input value={resume.profile.portfolio} onChange={(e) => updateProfile("portfolio", e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Estado civil</Label>
-                <Input value={resume.profile.maritalStatus} onChange={(e) => updateProfile("maritalStatus", e.target.value)} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>Nacionalidade</Label>
-                <Input value={resume.profile.nationality} onChange={(e) => updateProfile("nationality", e.target.value)} />
-              </div>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                  <CardTitle>Idiomas</CardTitle>
+                  <Button type="button" variant="outline" size="sm" onClick={addLanguage}>
+                    <PlusIcon className="mr-2 size-4" />
+                    Adicionar
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLanguagesDragEnd}>
+                    <SortableContext items={resume.languages.map((_, index) => `language-${index}`)} strategy={verticalListSortingStrategy}>
+                      {resume.languages.map((language, index) => (
+                        <SortableResumeCard key={`language-${index}`} id={`language-${index}`} className="grid gap-3 md:grid-cols-2">
+                          <div className="absolute right-4 top-2">
+                            <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => removeLanguage(index)}>
+                              <Trash2Icon className="size-2" />
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Idioma</Label>
+                            <Input value={language.name} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateLanguage(index, "name", e.target.value)} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Nível</Label>
+                            <Input value={language.level} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateLanguage(index, "level", e.target.value)} />
+                          </div>
+                        </SortableResumeCard>
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <CardTitle>Idiomas</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={() => setResume((current) => ({ ...current, languages: [...current.languages, createEmptyLanguage()] }))}>
-                <PlusIcon className="mr-2 size-4" />
-                Adicionar
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLanguagesDragEnd}>
-                <SortableContext items={resume.languages.map((_, index) => `language-${index}`)} strategy={verticalListSortingStrategy}>
-                  {resume.languages.map((language, index) => (
-                    <SortableResumeCard key={`language-${index}`} id={`language-${index}`} className="grid gap-3 md:grid-cols-2">
-                      <div className="absolute right-4 top-2">
-                        <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => setResume((current) => ({ ...current, languages: current.languages.filter((_, itemIndex) => itemIndex !== index) }))}>
-                          <Trash2Icon className="size-2" />
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Idioma</Label>
-                        <Input value={language.name} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateLanguage(index, "name", e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Nível</Label>
-                        <Input value={language.level} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateLanguage(index, "level", e.target.value)} />
-                      </div>
-                    </SortableResumeCard>
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                  <CardTitle>Formação</CardTitle>
+                  <Button type="button" variant="outline" size="sm" onClick={addEducation}>
+                    <PlusIcon className="mr-2 size-4" />
+                    Adicionar
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEducationDragEnd}>
+                    <SortableContext items={resume.education.map((_, index) => `education-${index}`)} strategy={verticalListSortingStrategy}>
+                      {resume.education.map((item, index) => (
+                        <SortableResumeCard key={`education-${index}`} id={`education-${index}`} className="grid gap-3 md:grid-cols-2">
+                          <div className="absolute right-4 top-2">
+                            <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => removeEducation(index)}>
+                              <Trash2Icon className="size-2" />
+                            </Button>
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Curso</Label>
+                            <Input value={item.course} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateEducation(index, "course", e.target.value)} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Conclusão</Label>
+                            <Input value={item.conclusion} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateEducation(index, "conclusion", e.target.value)} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Instituição</Label>
+                            <Input value={item.institution} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateEducation(index, "institution", e.target.value)} />
+                          </div>
+                        </SortableResumeCard>
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <CardTitle>Formação</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={() => setResume((current) => ({ ...current, education: [...current.education, createEmptyEducation()] }))}>
-                <PlusIcon className="mr-2 size-4" />
-                Adicionar
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEducationDragEnd}>
-                <SortableContext items={resume.education.map((_, index) => `education-${index}`)} strategy={verticalListSortingStrategy}>
-                  {resume.education.map((item, index) => (
-                    <SortableResumeCard key={`education-${index}`} id={`education-${index}`} className="grid gap-3 md:grid-cols-2">
-                      <div className="absolute right-4 top-2">
-                        <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => setResume((current) => ({ ...current, education: current.education.filter((_, itemIndex) => itemIndex !== index) }))}>
-                          <Trash2Icon className="size-2" />
-                        </Button>
-                      </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>Curso</Label>
-                        <Input value={item.course} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateEducation(index, "course", e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Conclusão</Label>
-                        <Input value={item.conclusion} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateEducation(index, "conclusion", e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Instituição</Label>
-                        <Input value={item.institution} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateEducation(index, "institution", e.target.value)} />
-                      </div>
-                    </SortableResumeCard>
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Certificações</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label>Uma certificação por linha</Label>
+                  <AutoTextarea
+                    className={TEXTAREA_CLASSNAME}
+                    value={certificationsText}
+                    onChange={(e) => setResume((current) => ({ ...current, certifications: splitLines(e.target.value) }))}
+                  />
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Certificações</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Label>Uma certificação por linha</Label>
-              <AutoTextarea
-                className={TEXTAREA_CLASSNAME}
-                value={certificationsText}
-                onChange={(e) => setResume((current) => ({ ...current, certifications: splitLines(e.target.value) }))}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <CardTitle>Habilidades</CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setResume((current) => ({ ...current, skillGroups: [...current.skillGroups, createEmptySkillGroup()] }));
-                  setSkillGroupItemDrafts((current) => [...current, ""]);
-                }}
-              >
-                <PlusIcon className="mr-2 size-4" />
-                Adicionar
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSkillGroupsDragEnd}>
-                <SortableContext items={resume.skillGroups.map((_, index) => `skill-group-${index}`)} strategy={verticalListSortingStrategy}>
-                  {resume.skillGroups.map((group, index) => (
-                    <SortableResumeCard
-                      key={`skill-group-${index}`}
-                      id={`skill-group-${index}`}
-                      className="grid gap-3 pt-6"
-                      useHandle
-                      handleLabel="Reordenar grupo de habilidades"
-                      handleClassName="absolute right-12 top-2.5"
-                    >
-                      <div className="absolute right-4 top-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={() => {
-                            setResume((current) => ({ ...current, skillGroups: current.skillGroups.filter((_, itemIndex) => itemIndex !== index) }));
-                            setSkillGroupItemDrafts((current) => current.filter((_, itemIndex) => itemIndex !== index));
-                          }}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                  <CardTitle>Habilidades</CardTitle>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addSkillGroup}
+                  >
+                    <PlusIcon className="mr-2 size-4" />
+                    Adicionar
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSkillGroupsDragEnd}>
+                    <SortableContext items={resume.skillGroups.map((_, index) => `skill-group-${index}`)} strategy={verticalListSortingStrategy}>
+                      {resume.skillGroups.map((group, index) => (
+                        <SortableResumeCard
+                          key={`skill-group-${index}`}
+                          id={`skill-group-${index}`}
+                          className="grid gap-3 pt-6"
+                          useHandle
+                          handleLabel="Reordenar grupo de habilidades"
+                          handleClassName="absolute right-12 top-2.5"
                         >
-                          <Trash2Icon className="size-2" />
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Título do grupo</Label>
-                        <Input value={group.title} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSkillGroup(index, "title", e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Itens separados por vírgula</Label>
-                        <AutoTextarea
-                          className={TEXTAREA_CLASSNAME}
-                          value={skillGroupItemDrafts[index] ?? joinSkillItems(group.items)}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onChange={(e) => updateSkillGroup(index, "items", e.target.value)}
-                        />
-                      </div>
-                    </SortableResumeCard>
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </CardContent>
-          </Card>
-        </div>
+                          <div className="absolute right-4 top-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() => removeSkillGroup(index)}
+                            >
+                              <Trash2Icon className="size-2" />
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Título do grupo</Label>
+                            <Input value={group.title} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSkillGroup(index, "title", e.target.value)} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Itens separados por vírgula</Label>
+                            <AutoTextarea
+                              className={TEXTAREA_CLASSNAME}
+                              value={skillGroupItemDrafts[index] ?? joinSkillItems(group.items)}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onChange={(e) => updateSkillGroup(index, "items", e.target.value)}
+                            />
+                          </div>
+                        </SortableResumeCard>
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                </CardContent>
+              </Card>
+            </>
+          </div>
+        ) : null}
 
         <div className="min-w-0">
           <Card className="overflow-hidden">
-            <CardHeader className="border-b bg-muted/20">
-              <CardTitle>Preview do PDF</CardTitle>
+            <CardHeader className={showEditorPanels ? "border-b bg-muted/20" : "flex flex-col gap-3 border-b bg-muted/20 lg:flex-row lg:items-center lg:justify-between"}>
+              <CardTitle className="shrink-0">Preview do PDF</CardTitle>
+              {showEditorPanels ? null : (
+                <div className="min-w-0 overflow-x-auto pb-1 lg:pb-0">
+                  <div className="flex min-w-max items-center gap-2 lg:justify-end">
+                    {renderAppearanceQuickControls({ compact: true, idPrefix: "preview" })}
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="overflow-auto p-4">
-              <ResumePreview data={resume} locale={resumeLocale} />
+              <ResumePreview
+                data={resume}
+                locale={resumeLocale}
+                pdfMode
+                screenPreview
+                editable
+                editor={{
+                  updateProfile,
+                  updateLanguage,
+                  addLanguage,
+                  removeLanguage,
+                  updateEducation,
+                  addEducation,
+                  removeEducation,
+                  updateExperience,
+                  addExperience,
+                  removeExperience,
+                  updateCertification,
+                  addCertification,
+                  removeCertification,
+                  updateSkillGroup,
+                  addSkillGroup,
+                  removeSkillGroup,
+                  updateSolvedProblem,
+                  addSolvedProblem,
+                  removeSolvedProblem,
+                }}
+              />
             </CardContent>
           </Card>
         </div>
 
-        <div className="space-y-6 lg:pl-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <CardTitle>Experiência Profissional</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={() => setResume((current) => ({ ...current, experiences: [...current.experiences, createEmptyExperience()] }))}>
-                <PlusIcon className="mr-2 size-4" />
-                Adicionar
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleExperiencesDragEnd}>
-                <SortableContext items={resume.experiences.map((_, index) => `experience-${index}`)} strategy={verticalListSortingStrategy}>
-                  {resume.experiences.map((item, index) => (
-                    <SortableResumeCard key={`experience-${index}`} id={`experience-${index}`} className="grid gap-3 md:grid-cols-2">
-                      <div className="absolute right-4 top-2">
-                        <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => setResume((current) => ({ ...current, experiences: current.experiences.filter((_, itemIndex) => itemIndex !== index) }))}>
-                          <Trash2Icon className="size-2" />
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Cargo</Label>
-                        <Input value={item.role} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "role", e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Duração</Label>
-                        <Input value={item.duration} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "duration", e.target.value)} />
-                      </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>Empresa</Label>
-                        <Input value={item.company} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "company", e.target.value)} />
-                      </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <Label>Resumo</Label>
-                        <AutoTextarea className={TEXTAREA_CLASSNAME} value={item.summary} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "summary", e.target.value)} />
-                      </div>
-                    </SortableResumeCard>
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </CardContent>
-          </Card>
+        {showEditorPanels ? (
+          <div className="space-y-6 lg:pl-2">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <CardTitle>Experiência Profissional</CardTitle>
+                <Button type="button" variant="outline" size="sm" onClick={addExperience}>
+                  <PlusIcon className="mr-2 size-4" />
+                  Adicionar
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleExperiencesDragEnd}>
+                  <SortableContext items={resume.experiences.map((_, index) => `experience-${index}`)} strategy={verticalListSortingStrategy}>
+                    {resume.experiences.map((item, index) => (
+                      <SortableResumeCard key={`experience-${index}`} id={`experience-${index}`} className="grid gap-3 md:grid-cols-2">
+                        <div className="absolute right-4 top-2">
+                          <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => removeExperience(index)}>
+                            <Trash2Icon className="size-2" />
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cargo</Label>
+                          <Input value={item.role} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "role", e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Duração</Label>
+                          <Input value={item.duration} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "duration", e.target.value)} />
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>Empresa</Label>
+                          <Input value={item.company} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "company", e.target.value)} />
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>Resumo</Label>
+                          <AutoTextarea className={TEXTAREA_CLASSNAME} value={item.summary} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateExperience(index, "summary", e.target.value)} />
+                        </div>
+                      </SortableResumeCard>
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <CardTitle>Problemas Resolvidos</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={() => setResume((current) => ({ ...current, solvedProblems: [...current.solvedProblems, createEmptySolvedProblem()] }))}>
-                <PlusIcon className="mr-2 size-4" />
-                Adicionar
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSolvedProblemsDragEnd}>
-                <SortableContext items={resume.solvedProblems.map((_, index) => `solved-problem-${index}`)} strategy={verticalListSortingStrategy}>
-                  {resume.solvedProblems.map((item, index) => (
-                    <SortableResumeCard key={`solved-problem-${index}`} id={`solved-problem-${index}`} className="grid gap-3">
-                      <div className="absolute right-4 top-2">
-                        <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => setResume((current) => ({ ...current, solvedProblems: current.solvedProblems.filter((_, itemIndex) => itemIndex !== index) }))}>
-                          <Trash2Icon className="size-2" />
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Título</Label>
-                        <Input value={item.title} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSolvedProblem(index, "title", e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Contexto</Label>
-                        <AutoTextarea className={TEXTAREA_CLASSNAME} value={item.context} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSolvedProblem(index, "context", e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Impacto / reconhecimento</Label>
-                        <AutoTextarea className={TEXTAREA_CLASSNAME} value={item.impact} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSolvedProblem(index, "impact", e.target.value)} />
-                      </div>
-                    </SortableResumeCard>
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </CardContent>
-          </Card>
-        </div>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <CardTitle>Problemas Resolvidos</CardTitle>
+                <Button type="button" variant="outline" size="sm" onClick={addSolvedProblem}>
+                  <PlusIcon className="mr-2 size-4" />
+                  Adicionar
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSolvedProblemsDragEnd}>
+                  <SortableContext items={resume.solvedProblems.map((_, index) => `solved-problem-${index}`)} strategy={verticalListSortingStrategy}>
+                    {resume.solvedProblems.map((item, index) => (
+                      <SortableResumeCard key={`solved-problem-${index}`} id={`solved-problem-${index}`} className="grid gap-3">
+                        <div className="absolute right-4 top-2">
+                          <Button type="button" variant="outline" size="sm" className="h-6 w-6 rounded-md border-red-500/40 p-0 text-red-500 hover:bg-red-500/10 hover:text-red-400" onPointerDown={(e) => e.stopPropagation()} onClick={() => removeSolvedProblem(index)}>
+                            <Trash2Icon className="size-2" />
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Título</Label>
+                          <Input value={item.title} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSolvedProblem(index, "title", e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Contexto</Label>
+                          <AutoTextarea className={TEXTAREA_CLASSNAME} value={item.context} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSolvedProblem(index, "context", e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Impacto / reconhecimento</Label>
+                          <AutoTextarea className={TEXTAREA_CLASSNAME} value={item.impact} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => updateSolvedProblem(index, "impact", e.target.value)} />
+                        </div>
+                      </SortableResumeCard>
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
       </div>
     </div>
   );

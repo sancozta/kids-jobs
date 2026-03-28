@@ -1103,19 +1103,24 @@ export default function VagasPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {items.map((item) => {
                 const externalUrl = getPrimaryExternalUrl(item);
+                const isItemChecked = selectedItemIds.includes(item.id);
+                const isItemActive = selectedItem?.id === item.id;
+                const shouldShowCardActions = isItemChecked || isItemActive;
                 return (
                 <Card
                   key={item.id}
                   className="group relative h-[200px] gap-0 overflow-hidden py-0 transition-all hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 cursor-pointer shadow-xs bg-gradient-to-t from-primary/2 to-card dark:bg-card"
                   onClick={(event) => handleCardClick(event, item)}
                 >
-                  <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+                  <div
+                    className={`absolute right-2 top-2 z-10 flex items-center gap-1 transition-opacity ${shouldShowCardActions ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"}`}
+                  >
                     <div
                       className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background/80"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <Checkbox
-                        checked={selectedItemIds.includes(item.id)}
+                        checked={isItemChecked}
                         onCheckedChange={(checked) => setItemSelection(item.id, checked === true)}
                         aria-label={`Selecionar item ${item.id}`}
                       />
