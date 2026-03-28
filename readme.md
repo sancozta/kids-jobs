@@ -84,7 +84,7 @@ No preview da tela principal, os títulos das seções listáveis também funcio
 
 Preview atual do currículo:
 
-![Preview do currículo](./docs/assets/resume.png)
+![Preview do currículo](./resume.png)
 
 ##### 4. Catálogo de fontes em `/sources`
 
