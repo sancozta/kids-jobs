@@ -925,7 +925,7 @@ export function ResumePreview({
                 )}
               </div>
 
-              <SidebarBlock title={copy.contact} fontScale={fontScale}>
+              <SidebarBlock title={copy.contact} fontScale={fontScale} accentColor={accentColor}>
                 {contactLinks.map((item) => (
                   <ContactRow
                     key={item.label}
